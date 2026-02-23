@@ -1,0 +1,75 @@
+{
+  "id": "work-agent",
+  "name": "Work Agent",
+  "description": "Gmail/Calendar/WhatsApp/Telegram indexing + reports.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "dbUrl": { "type": "string" },
+      "gmail": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "clientId": { "type": "string" },
+          "clientSecret": { "type": "string" },
+          "redirectUri": { "type": "string" },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": { "type": "string" },
+                "email": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "gcal": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "clientId": { "type": "string" },
+          "clientSecret": { "type": "string" },
+          "redirectUri": { "type": "string" },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": { "type": "string" },
+                "email": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "reports": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timezone": { "type": "string" },
+          "cadence": { "type": "string" },
+          "defaultProjects": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "uiHints": {
+    "dbUrl": { "label": "Postgres URL", "help": "Connection string for message index + reports." },
+    "gmail.clientId": { "label": "Gmail Client ID" },
+    "gmail.clientSecret": { "label": "Gmail Client Secret", "sensitive": true },
+    "gmail.redirectUri": { "label": "Gmail Redirect URI" },
+    "gcal.clientId": { "label": "GCal Client ID" },
+    "gcal.clientSecret": { "label": "GCal Client Secret", "sensitive": true },
+    "gcal.redirectUri": { "label": "GCal Redirect URI" },
+    "reports.timezone": { "label": "Reports Timezone" },
+    "reports.cadence": { "label": "Reports Cadence" }
+  }
+}

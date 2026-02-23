@@ -1,0 +1,5 @@
+.DS_Store
+
+# Python virtualenvs
+telegram-sidecar/.venv/
+telegram-sidecar/.venv39/

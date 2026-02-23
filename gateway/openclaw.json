@@ -1,0 +1,38 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "/app/workspace"
+    }
+  },
+  "gateway": {
+    "bind": "lan"
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "${TELEGRAM_BOT_TOKEN}",
+      "dmPolicy": "allowlist",
+      "allowFrom": ["tg:7664703896"],
+      "actions": { "sendMessage": true },
+      "groups": {
+        "*": { "requireMention": true }
+      }
+    }
+  },
+  "plugins": {
+    "enabled": true,
+    "allow": ["work-agent", "telegram"],
+    "load": {
+      "paths": ["/app/work-agent-plugin"]
+    },
+    "entries": {
+      "telegram": {
+        "enabled": true
+      },
+      "work-agent": {
+        "enabled": true,
+        "config": {}
+      }
+    }
+  }
+}
