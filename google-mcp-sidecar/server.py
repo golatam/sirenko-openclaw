@@ -1,7 +1,7 @@
 """HTTP entrypoint for google-workspace-mcp."""
 import os
 import uvicorn
-from mcp.server.transport_security import TransportSecuritySettings
+from starlette.types import ASGIApp, Receive, Scope, Send
 from google_workspace_mcp import config  # noqa: F401
 from google_workspace_mcp.app import mcp
 
@@ -22,12 +22,27 @@ from google_workspace_mcp.tools import drive as _td  # noqa: F401
 from google_workspace_mcp.tools import gmail as _tg  # noqa: F401
 from google_workspace_mcp.tools import slides as _ts  # noqa: F401
 
-# Disable DNS rebinding protection for internal Railway networking
-app = mcp.streamable_http_app(
-    transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=False
-    )
-)
+
+class HostRewriteMiddleware:
+    """Rewrite Host header to localhost to bypass MCP DNS rebinding protection.
+
+    Railway internal networking uses hostnames like
+    service.railway.internal:8080, which the MCP SDK rejects with 421.
+    """
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "http":
+            scope["headers"] = [
+                (b"host", b"localhost") if k == b"host" else (k, v)
+                for k, v in scope.get("headers", [])
+            ]
+        await self.app(scope, receive, send)
+
+
+app = HostRewriteMiddleware(mcp.streamable_http_app())
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
