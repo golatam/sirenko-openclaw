@@ -6,13 +6,15 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 let _mcpUrl: string | undefined;
 let _dbUrl: string | undefined;
+let _mcpSessionId: string | undefined;
+let _mcpInitPromise: Promise<void> | undefined;
 
 function mcpUrl(): string {
   if (!_mcpUrl) throw new Error("mcpServerUrl is not configured");
   return _mcpUrl;
 }
 
-async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
+async function mcpInit(): Promise<void> {
   const res = await fetch(`${mcpUrl()}/mcp`, {
     method: "POST",
     headers: {
@@ -21,12 +23,84 @@ async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "work-agent-plugin", version: "1.0.0" },
+      },
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`MCP init HTTP ${res.status}: ${await res.text()}`);
+  }
+  const sid = res.headers.get("mcp-session-id");
+  if (sid) _mcpSessionId = sid;
+  // Read body to completion
+  await res.json();
+}
+
+async function ensureMcpSession(): Promise<void> {
+  if (_mcpSessionId) return;
+  if (!_mcpInitPromise) {
+    _mcpInitPromise = mcpInit().catch((e) => {
+      _mcpInitPromise = undefined;
+      throw e;
+    });
+  }
+  await _mcpInitPromise;
+}
+
+async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
+  await ensureMcpSession();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+  };
+  if (_mcpSessionId) headers["Mcp-Session-Id"] = _mcpSessionId;
+
+  const res = await fetch(`${mcpUrl()}/mcp`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      jsonrpc: "2.0",
       id: Date.now(),
       method: "tools/call",
       params: { name: toolName, arguments: args },
     }),
   });
   if (!res.ok) {
+    // Session expired — reset and retry once
+    if (res.status === 404 || res.status === 400) {
+      _mcpSessionId = undefined;
+      _mcpInitPromise = undefined;
+      await ensureMcpSession();
+      const headers2: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      };
+      if (_mcpSessionId) headers2["Mcp-Session-Id"] = _mcpSessionId;
+      const res2 = await fetch(`${mcpUrl()}/mcp`, {
+        method: "POST",
+        headers: headers2,
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: Date.now(),
+          method: "tools/call",
+          params: { name: toolName, arguments: args },
+        }),
+      });
+      if (!res2.ok) {
+        throw new Error(`MCP HTTP ${res2.status}: ${await res2.text()}`);
+      }
+      const json2 = (await res2.json()) as {
+        result?: unknown;
+        error?: { message: string };
+      };
+      if (json2.error) throw new Error(json2.error.message);
+      return json2.result;
+    }
     throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
   }
   const json = (await res.json()) as {
