@@ -1,6 +1,6 @@
 # Project Status — OpenClaw Work Agent
 
-Date: 2026-02-23
+Date: 2026-02-24
 
 ## Goal
 Build a focused agent using OpenClaw for:
@@ -35,19 +35,26 @@ Gateway domain:
 - Sidecar uses persistent volume `/data` for sessions and optional StringSession.
 - TG1/TG2/TG3 StringSessions generated and stored in Railway vars.
 
-## In Progress
-- Configure agent identity (IDENTITY.md/USER.md) and remove BOOTSTRAP.md.
-
 ## Implemented (Google Workspace)
 - `google-mcp-sidecar/` — Dockerfile + config для workspace-mcp (Gmail, Calendar, Drive)
 - `work-agent-plugin/index.ts` переписан: MCP-клиент на fetch(), 10 реальных тулов вместо 5 стабов
 - `openclaw.plugin.json` обновлён: mcpServerUrl + dbUrl вместо отдельных gmail/gcal секций
 - `gateway/openclaw.json` обновлён: передаёт GOOGLE_MCP_URL и DATABASE_URL в плагин
+- google-mcp-sidecar задеплоен на Railway, GOOGLE_MCP_URL настроен
+- OAuth-креды Gmail (legacy-метод: GOOGLE_WORKSPACE_*) настроены в Railway vars
+- MCP Streamable HTTP: SSE/JSON парсинг исправлен, сессии работают стабильно
+
+## Implemented (MCP Integration Fixes, 2026-02-24)
+- Accept header (`application/json, text/event-stream`) для MCP Streamable HTTP
+- Session management: `initialize` → session-id → `tools/call` с переиспользованием
+- SSE response parsing: `parseMcpBody()` обрабатывает и JSON, и SSE форматы
+- Server-side: `json_response=True` на FastMCP для предпочтения JSON-ответов
+- Stale session/lock cleanup при рестарте контейнера
+
+## In Progress
+- Configure agent identity (IDENTITY.md/USER.md) and remove BOOTSTRAP.md.
 
 ## Pending
-- Деплой google-mcp-sidecar на Railway
-- OAuth-авторизация Gmail-аккаунтов (локально → Redis)
-- Добавить GOOGLE_MCP_URL в переменные gateway на Railway
 - Verify `telegram-sidecar` running successfully and ingesting messages.
 - WhatsApp channel login for Gateway.
 - Add tool allowlist and guardrails in OpenClaw config.
