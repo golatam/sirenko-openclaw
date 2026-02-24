@@ -16,7 +16,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 2. **Telegram Sidecar** (`telegram-sidecar/`) — Python 3.11 asyncio, Telethon (MTProto). Логинится в 3 пользовательских аккаунта через StringSession, пишет сообщения в PostgreSQL. Точка входа: `main.py`.
 
-3. **Google MCP Sidecar** (`google-mcp-sidecar/`) — Python 3.11, workspace-mcp. Gmail, Calendar, Drive через MCP (JSON-RPC 2.0, Streamable HTTP). Порт 8000.
+3. **Google MCP Sidecar** (`google-mcp-sidecar/`) — Python 3.12, FastMCP + google-api-python-client. Gmail, Calendar, Drive через MCP (JSON-RPC 2.0, Streamable HTTP). Мультиаккаунт через `GOOGLE_WORKSPACE_ACCOUNTS` JSON. Порт 8000.
 
 4. **PostgreSQL** — общий на Railway. Схема в `telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
 
@@ -44,7 +44,7 @@ cd telegram-sidecar && python gen_session.py
 
 ### Деплой
 
-Три сервиса — Docker на Railway. Gateway Dockerfile ставит OpenClaw глобально, копирует плагин и workspace. Google MCP sidecar запускает workspace-mcp. Telegram sidecar ставит Python-зависимости и запускает `main.py`.
+Три сервиса — Docker на Railway. Gateway Dockerfile ставит OpenClaw глобально, копирует плагин и workspace. Google MCP sidecar запускает свой FastMCP сервер. Telegram sidecar ставит Python-зависимости и запускает `main.py`.
 
 Переменные окружения — в Railway. Секреты (токены, API-ключи, session-строки) хранятся только в Railway variables, не коммитятся.
 

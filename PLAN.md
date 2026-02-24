@@ -16,10 +16,36 @@
 - [x] Создан google-mcp-sidecar (workspace-mcp, Dockerfile, порт 8000)
 - [x] Плагин переписан: MCP-клиент на fetch(), 10 тулов вместо 5 стабов
 - [x] Конфиг обновлён: mcpServerUrl + dbUrl
-- [ ] Деплой google-mcp-sidecar на Railway
-- [ ] OAuth-авторизация Gmail-аккаунтов
-- [ ] Добавить GOOGLE_MCP_URL в переменные gateway на Railway
+- [x] Деплой google-mcp-sidecar на Railway
+- [x] OAuth-авторизация — 3 refresh token'а получены
+- [x] kirill@sirenko.ru — работает (single-account)
+- [x] **Мультиаккаунт** — свой MCP-сервер (без workspace-mcp)
 - [ ] Проверить end-to-end: отправка письма, создание события
+- [ ] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway после проверки
+
+### Реализация мультиаккаунта
+
+**Решение**: полностью заменили workspace-mcp на свой MCP-сервер.
+- `server.py` (~280 строк): FastMCP + google-api-python-client
+- 7 тулов с `account` параметром, Google API напрямую
+- `GOOGLE_WORKSPACE_ACCOUNTS` JSON → per-account Credentials с кэшированием
+- Те же MCP tool names — плагин не менялся
+
+### OAuth credentials (справка)
+
+**Client**: `GOOGLE_WORKSPACE_CLIENT_ID` и `GOOGLE_WORKSPACE_CLIENT_SECRET` — в Railway env vars.
+
+**Аккаунты (3 шт, scopes: gmail.modify, calendar, drive)**:
+1. `kirill@sirenko.ru` — refresh token в Railway
+2. `kirill.s@flexify.finance` — refresh token в Railway
+3. `ksirenko@dolphin-software.online` — refresh token в Railway
+
+**Railway env vars**:
+- `GOOGLE_WORKSPACE_ACCOUNTS` = JSON с тремя refresh-токенами
+- `GOOGLE_WORKSPACE_CLIENT_ID`, `GOOGLE_WORKSPACE_CLIENT_SECRET` — OAuth client
+- `GOOGLE_WORKSPACE_REFRESH_TOKEN` = legacy single-account — удалить после проверки
+
+**Скрипт генерации токенов**: `google-mcp-sidecar/gen_token.py`
 
 ## Phase 4 — Search & Reports (Pending)
 - Implement unified search across sources
