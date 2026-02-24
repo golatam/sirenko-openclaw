@@ -5,7 +5,14 @@
     }
   },
   "gateway": {
-    "bind": "lan"
+    "bind": "lan",
+    "trustedProxies": ["100.64.0.1", "100.64.0.2", "100.64.0.3", "100.64.0.4", "100.64.0.5", "100.64.0.6", "100.64.0.7", "100.64.0.8", "100.64.0.9", "100.64.0.10", "100.64.0.11", "100.64.0.12"],
+    "auth": {
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "controlUi": {
+      "allowedOrigins": ["https://gateway-production-1382.up.railway.app"]
+    }
   },
   "channels": {
     "telegram": {

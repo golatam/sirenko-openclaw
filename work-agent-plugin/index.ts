@@ -169,7 +169,7 @@ const WorkAgentPlugin = {
             };
             if (params.account) gmailArgs.account = params.account;
 
-            results.gmail = await mcpCall("gmail_search", gmailArgs);
+            results.gmail = await mcpCall("query_gmail_emails", gmailArgs);
           } catch (e) {
             results.gmail = { error: (e as Error).message };
           }
@@ -215,7 +215,7 @@ const WorkAgentPlugin = {
             message_id: params.message_id,
           };
           if (params.account) args.account = params.account;
-          const result = await mcpCall("gmail_get_message", args);
+          const result = await mcpCall("gmail_get_message_details", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -293,7 +293,7 @@ const WorkAgentPlugin = {
         try {
           const args: Record<string, unknown> = {};
           if (params.account) args.account = params.account;
-          const result = await mcpCall("list_calendars", args);
+          const result = await mcpCall("calendar_get_events", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -348,7 +348,7 @@ const WorkAgentPlugin = {
           if (params.time_min) args.time_min = params.time_min;
           if (params.time_max) args.time_max = params.time_max;
 
-          const result = await mcpCall("list_events", args);
+          const result = await mcpCall("calendar_get_events", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -479,7 +479,7 @@ const WorkAgentPlugin = {
         try {
           const args: Record<string, unknown> = { file_id: params.file_id };
           if (params.account) args.account = params.account;
-          const result = await mcpCall("drive_read_file", args);
+          const result = await mcpCall("drive_read_file_content", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -532,7 +532,7 @@ const WorkAgentPlugin = {
             max_results: 50,
           };
           if (params.account) args.account = params.account;
-          data.gmail = await mcpCall("gmail_search", args);
+          data.gmail = await mcpCall("query_gmail_emails", args);
         } catch (e) {
           data.gmail = { error: (e as Error).message };
         }
@@ -621,7 +621,7 @@ const WorkAgentPlugin = {
               max_results: 50,
             };
             if (params.account) args.account = params.account;
-            projectData.gmail = await mcpCall("gmail_search", args);
+            projectData.gmail = await mcpCall("query_gmail_emails", args);
           } catch (e) {
             projectData.gmail = { error: (e as Error).message };
           }
@@ -648,7 +648,7 @@ const WorkAgentPlugin = {
             max_results: 50,
           };
           if (params.account) calArgs.account = params.account;
-          report.calendar = await mcpCall("list_events", calArgs);
+          report.calendar = await mcpCall("calendar_get_events", calArgs);
         } catch (e) {
           report.calendar = { error: (e as Error).message };
         }

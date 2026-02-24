@@ -4,7 +4,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g openclaw@2026.2.22-2
+RUN npm install -g openclaw@2026.2.23
 
 WORKDIR /app
 COPY openclaw.json /app/openclaw.json
