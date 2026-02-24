@@ -42,6 +42,11 @@ class DebugHeadersMiddleware:
         await self.app(scope, receive, send)
 
 
+# Enable JSON responses so clients can use res.json() instead of parsing SSE.
+try:
+    mcp.settings.json_response = True
+except Exception:
+    pass
 app = DebugHeadersMiddleware(mcp.streamable_http_app())
 
 if __name__ == "__main__":

@@ -14,6 +14,24 @@ function mcpUrl(): string {
   return _mcpUrl;
 }
 
+/** Parse MCP response that may be JSON or SSE (text/event-stream). */
+async function parseMcpBody(res: Response): Promise<{ result?: unknown; error?: { message: string } }> {
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("text/event-stream")) {
+    const text = await res.text();
+    // SSE format: "event: message\ndata: {json}\n\n"
+    const lines = text.split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (line.startsWith("data:")) {
+        return JSON.parse(line.slice(5).trim());
+      }
+    }
+    throw new Error("No data in SSE response");
+  }
+  return res.json();
+}
+
 async function mcpInit(): Promise<void> {
   const res = await fetch(`${mcpUrl()}/mcp`, {
     method: "POST",
@@ -37,8 +55,8 @@ async function mcpInit(): Promise<void> {
   }
   const sid = res.headers.get("mcp-session-id");
   if (sid) _mcpSessionId = sid;
-  // Read body to completion
-  await res.json();
+  // Read body to completion (may be JSON or SSE)
+  await parseMcpBody(res);
 }
 
 async function ensureMcpSession(): Promise<void> {
@@ -94,19 +112,13 @@ async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
       if (!res2.ok) {
         throw new Error(`MCP HTTP ${res2.status}: ${await res2.text()}`);
       }
-      const json2 = (await res2.json()) as {
-        result?: unknown;
-        error?: { message: string };
-      };
+      const json2 = await parseMcpBody(res2);
       if (json2.error) throw new Error(json2.error.message);
       return json2.result;
     }
     throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
   }
-  const json = (await res.json()) as {
-    result?: unknown;
-    error?: { message: string };
-  };
+  const json = await parseMcpBody(res);
   if (json.error) throw new Error(json.error.message);
   return json.result;
 }
