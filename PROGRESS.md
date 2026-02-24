@@ -21,3 +21,17 @@
 - Telegram bot channel enabled and running in Gateway.
 - Bot responded in Telegram; basic chat works.
 - Switched Telegram DM policy to allowlist for user id 7664703896 to bypass pairing.
+
+## 2026-02-24
+- Интеграция Google Workspace через MCP:
+  - Создан `google-mcp-sidecar/` (Dockerfile, config.example.env, README.md)
+  - Используется workspace-mcp (taylorwilsdon/google_workspace_mcp) — Streamable HTTP на порту 8000
+  - Плагин `work-agent-plugin/index.ts` полностью переписан:
+    - MCP-клиент на native fetch() (JSON-RPC 2.0)
+    - 5 стабов заменены реальными вызовами MCP-сервера
+    - 5 новых тулов: work_read_email, work_list_calendars, work_list_events, work_drive_search, work_drive_read
+    - work_search_messages объединяет Gmail + Telegram
+    - work_weekly_report агрегирует Gmail + Calendar + Telegram
+  - `openclaw.plugin.json` упрощён: mcpServerUrl + dbUrl
+  - `gateway/openclaw.json` обновлён: передаёт GOOGLE_MCP_URL и DATABASE_URL
+  - Документация обновлена: ARCHITECTURE.md, PROJECT_STATUS.md, CLAUDE.md, PLAN.md

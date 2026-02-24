@@ -38,11 +38,18 @@ Gateway domain:
 ## In Progress
 - Configure agent identity (IDENTITY.md/USER.md) and remove BOOTSTRAP.md.
 
+## Implemented (Google Workspace)
+- `google-mcp-sidecar/` — Dockerfile + config для workspace-mcp (Gmail, Calendar, Drive)
+- `work-agent-plugin/index.ts` переписан: MCP-клиент на fetch(), 10 реальных тулов вместо 5 стабов
+- `openclaw.plugin.json` обновлён: mcpServerUrl + dbUrl вместо отдельных gmail/gcal секций
+- `gateway/openclaw.json` обновлён: передаёт GOOGLE_MCP_URL и DATABASE_URL в плагин
+
 ## Pending
+- Деплой google-mcp-sidecar на Railway
+- OAuth-авторизация Gmail-аккаунтов (локально → Redis)
+- Добавить GOOGLE_MCP_URL в переменные gateway на Railway
 - Verify `telegram-sidecar` running successfully and ingesting messages.
 - WhatsApp channel login for Gateway.
-- Gmail/GCal OAuth integration inside `work-agent` plugin.
-- Add message index queries + report generation.
 - Add tool allowlist and guardrails in OpenClaw config.
 - Configure weekly reports via OpenClaw cron.
 
@@ -51,6 +58,7 @@ Gateway domain:
 - `work-agent-plugin/*`
 - `telegram-sidecar/*`
 - `gateway/*`
+- `google-mcp-sidecar/*`
 
 ## Notes
 - Telegram uses MTProto user accounts via sidecar.

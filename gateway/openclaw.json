@@ -31,7 +31,10 @@
       },
       "work-agent": {
         "enabled": true,
-        "config": {}
+        "config": {
+          "mcpServerUrl": "${GOOGLE_MCP_URL}",
+          "dbUrl": "${DATABASE_URL}"
+        }
       }
     }
   }

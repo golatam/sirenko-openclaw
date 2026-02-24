@@ -28,11 +28,21 @@ Postgres (shared):
 - `jobs`: background tasks (sync, report generation).
 
 **Tool Surface (OpenClaw)**
-- `work_search_messages`
-- `work_summarize_project`
-- `work_send_email`
-- `work_schedule_meeting`
-- `work_weekly_report`
+- `work_search_messages` — поиск по Gmail + Telegram
+- `work_read_email` — чтение письма по ID
+- `work_send_email` — отправка через Gmail (требует подтверждения)
+- `work_list_calendars` — список Google Calendar
+- `work_list_events` — события из календаря
+- `work_schedule_meeting` — создание события (требует подтверждения)
+- `work_drive_search` — поиск файлов в Google Drive
+- `work_drive_read` — чтение файла из Drive
+- `work_summarize_project` — сбор данных по проекту
+- `work_weekly_report` — агрегация за неделю
+
+**Google Workspace Backend**
+Тулы `work_*` вызывают google-mcp-sidecar через HTTP (JSON-RPC 2.0).
+Сайдкар — это `workspace-mcp` (taylorwilsdon/google_workspace_mcp), запущенный
+с Streamable HTTP транспортом. OAuth-токены хранятся в Redis.
 
 **Security / Guardrails**
 - All write tools should require confirmation before execution.
@@ -42,6 +52,7 @@ Postgres (shared):
 **Railway Topology**
 - Service A: `gateway` (OpenClaw)
 - Service B: `telegram-sidecar`
+- Service C: `google-mcp-sidecar` (workspace-mcp, порт 8000)
 - Add-ons: Postgres + Redis
 - Persistent volume for Telegram session files
 

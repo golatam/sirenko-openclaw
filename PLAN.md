@@ -12,10 +12,14 @@
 - Verify ingestion in Postgres
 - Connect WhatsApp to Gateway
 
-## Phase 3 — Gmail/GCal Integration (Pending)
-- Add Gmail search/send tools
-- Add GCal list/create tools
-- Store tokens in Postgres
+## Phase 3 — Gmail/GCal/Drive Integration (In Progress)
+- [x] Создан google-mcp-sidecar (workspace-mcp, Dockerfile, порт 8000)
+- [x] Плагин переписан: MCP-клиент на fetch(), 10 тулов вместо 5 стабов
+- [x] Конфиг обновлён: mcpServerUrl + dbUrl
+- [ ] Деплой google-mcp-sidecar на Railway
+- [ ] OAuth-авторизация Gmail-аккаунтов
+- [ ] Добавить GOOGLE_MCP_URL в переменные gateway на Railway
+- [ ] Проверить end-to-end: отправка письма, создание события
 
 ## Phase 4 — Search & Reports (Pending)
 - Implement unified search across sources

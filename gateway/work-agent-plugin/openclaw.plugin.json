@@ -1,75 +1,29 @@
 {
   "id": "work-agent",
   "name": "Work Agent",
-  "description": "Gmail/Calendar/WhatsApp/Telegram indexing + reports.",
+  "description": "Gmail/Calendar/Drive/Telegram — search, send, schedule, report.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "dbUrl": { "type": "string" },
-      "gmail": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "clientId": { "type": "string" },
-          "clientSecret": { "type": "string" },
-          "redirectUri": { "type": "string" },
-          "accounts": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "label": { "type": "string" },
-                "email": { "type": "string" }
-              }
-            }
-          }
-        }
+      "mcpServerUrl": {
+        "type": "string",
+        "description": "URL of google-mcp-sidecar (e.g. http://google-mcp-sidecar.railway.internal:8000)"
       },
-      "gcal": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "clientId": { "type": "string" },
-          "clientSecret": { "type": "string" },
-          "redirectUri": { "type": "string" },
-          "accounts": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "label": { "type": "string" },
-                "email": { "type": "string" }
-              }
-            }
-          }
-        }
-      },
-      "reports": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "timezone": { "type": "string" },
-          "cadence": { "type": "string" },
-          "defaultProjects": {
-            "type": "array",
-            "items": { "type": "string" }
-          }
-        }
+      "dbUrl": {
+        "type": "string",
+        "description": "PostgreSQL connection string for Telegram message index"
       }
     }
   },
   "uiHints": {
-    "dbUrl": { "label": "Postgres URL", "help": "Connection string for message index + reports." },
-    "gmail.clientId": { "label": "Gmail Client ID" },
-    "gmail.clientSecret": { "label": "Gmail Client Secret", "sensitive": true },
-    "gmail.redirectUri": { "label": "Gmail Redirect URI" },
-    "gcal.clientId": { "label": "GCal Client ID" },
-    "gcal.clientSecret": { "label": "GCal Client Secret", "sensitive": true },
-    "gcal.redirectUri": { "label": "GCal Redirect URI" },
-    "reports.timezone": { "label": "Reports Timezone" },
-    "reports.cadence": { "label": "Reports Cadence" }
+    "mcpServerUrl": {
+      "label": "Google MCP Server URL",
+      "help": "HTTP endpoint of the google-mcp-sidecar service"
+    },
+    "dbUrl": {
+      "label": "Postgres URL",
+      "help": "Connection string for Telegram message index (shared with telegram-sidecar)"
+    }
   }
 }
