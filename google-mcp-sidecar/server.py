@@ -1,6 +1,8 @@
 """HTTP entrypoint for google-workspace-mcp."""
 import os
+import sys
 import uvicorn
+from starlette.types import ASGIApp, Receive, Scope, Send
 from mcp.server.transport_security import TransportSecurityMiddleware
 from google_workspace_mcp import config  # noqa: F401
 from google_workspace_mcp.app import mcp
@@ -26,7 +28,21 @@ from google_workspace_mcp.tools import slides as _ts  # noqa: F401
 # Monkey-patch at class level before streamable_http_app() creates instances.
 TransportSecurityMiddleware._validate_host = lambda self, host: True
 
-app = mcp.streamable_http_app()
+class DebugHeadersMiddleware:
+    """Log incoming request headers for debugging."""
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "http":
+            headers = {k.decode(): v.decode() for k, v in scope.get("headers", [])}
+            print(f"[DEBUG] {scope['method']} {scope['path']} headers={headers}",
+                  flush=True, file=sys.stderr)
+        await self.app(scope, receive, send)
+
+
+app = DebugHeadersMiddleware(mcp.streamable_http_app())
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
