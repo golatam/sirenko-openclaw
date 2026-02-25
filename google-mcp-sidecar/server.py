@@ -260,20 +260,30 @@ def gmail_send_email(to: str, subject: str, body: str,
         bcc: BCC recipients (comma-separated)
         account: Gmail account email to send from (optional)
     """
-    gmail = _get_service(account or None, "gmail", "v1")
+    resolved = _resolve_account(account or None)
+    print(f"[GMAIL] Sending email from={resolved} to={to} subject={subject[:80]!r}",
+          flush=True, file=sys.stderr)
 
-    message = MIMEText(body)
-    message["to"] = to
-    message["subject"] = subject
-    if cc:
-        message["cc"] = cc
-    if bcc:
-        message["bcc"] = bcc
+    try:
+        gmail = _get_service(resolved, "gmail", "v1")
 
-    raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
-    sent = gmail.users().messages().send(userId="me", body={"raw": raw}).execute()
+        message = MIMEText(body, _charset="utf-8")
+        message["To"] = to
+        message["From"] = resolved
+        message["Subject"] = subject
+        if cc:
+            message["Cc"] = cc
+        if bcc:
+            message["Bcc"] = bcc
 
-    return json.dumps({"id": sent["id"], "threadId": sent.get("threadId"), "status": "sent"})
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+        sent = gmail.users().messages().send(userId="me", body={"raw": raw}).execute()
+
+        print(f"[GMAIL] Sent OK id={sent['id']}", flush=True, file=sys.stderr)
+        return json.dumps({"id": sent["id"], "threadId": sent.get("threadId"), "status": "sent"})
+    except Exception as e:
+        print(f"[GMAIL] Send FAILED: {type(e).__name__}: {e}", flush=True, file=sys.stderr)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -489,8 +499,9 @@ def drive_read_file_content(file_id: str, account: str = "") -> str:
 # Force JSON responses (not SSE) for simpler client parsing
 try:
     mcp.settings.json_response = True
-except Exception:
-    pass
+    print("[SERVER] json_response = True", flush=True, file=sys.stderr)
+except Exception as e:
+    print(f"[SERVER] json_response not supported: {e}", flush=True, file=sys.stderr)
 
 # Bypass MCP DNS rebinding Host validation for Railway internal networking
 TransportSecurityMiddleware._validate_host = lambda self, host: True

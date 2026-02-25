@@ -4,7 +4,6 @@
   "description": "Gmail/Calendar/Drive/Telegram — search, send, schedule, report.",
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
     "properties": {
       "mcpServerUrl": {
         "type": "string",

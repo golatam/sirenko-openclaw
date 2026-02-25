@@ -190,7 +190,6 @@ const WorkAgentPlugin = {
   kind: "tools",
   configSchema: {
     type: "object",
-    additionalProperties: false,
     properties: {
       mcpServerUrl: {
         type: "string",
@@ -221,7 +220,6 @@ const WorkAgentPlugin = {
         "Search messages across Gmail and Telegram. Returns combined results.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           query: { type: "string", description: "Search query" },
           account: {
@@ -296,7 +294,6 @@ const WorkAgentPlugin = {
       description: "Read a specific email by message ID.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           message_id: { type: "string", description: "Gmail message ID" },
           account: {
@@ -327,11 +324,14 @@ const WorkAgentPlugin = {
         "Send an email via a connected Gmail account. Requires user confirmation.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           account: {
             type: "string",
-            description: "Gmail account email to send from (optional)",
+            description: "Gmail account email to send from (optional, same as 'from')",
+          },
+          from: {
+            type: "string",
+            description: "Gmail account email to send from (alias for 'account')",
           },
           to: { type: "string", description: "Recipient email address" },
           subject: { type: "string", description: "Email subject" },
@@ -343,6 +343,7 @@ const WorkAgentPlugin = {
       },
       async execute(params: {
         account?: string;
+        from?: string;
         to: string;
         subject: string;
         body: string;
@@ -355,7 +356,8 @@ const WorkAgentPlugin = {
             subject: params.subject,
             body: params.body,
           };
-          if (params.account) args.account = params.account;
+          const sender = params.account || params.from;
+          if (sender) args.account = sender;
           if (params.cc) args.cc = params.cc;
           if (params.bcc) args.bcc = params.bcc;
 
@@ -377,7 +379,6 @@ const WorkAgentPlugin = {
       description: "List available Google Calendars.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           account: {
             type: "string",
@@ -404,7 +405,6 @@ const WorkAgentPlugin = {
       description: "List events from a Google Calendar.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           account: {
             type: "string",
@@ -460,7 +460,6 @@ const WorkAgentPlugin = {
         "Create a Google Calendar event. Requires user confirmation.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           account: {
             type: "string",
@@ -523,7 +522,6 @@ const WorkAgentPlugin = {
       description: "Search files in Google Drive.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           query: { type: "string", description: "Search query" },
           account: {
@@ -562,7 +560,6 @@ const WorkAgentPlugin = {
       description: "Read a file from Google Drive by file ID.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           file_id: { type: "string", description: "Google Drive file ID" },
           account: {
@@ -595,7 +592,6 @@ const WorkAgentPlugin = {
         "Gather messages from Gmail and Telegram for a project. Returns raw data for the agent to summarize.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           project: { type: "string", description: "Project name or keyword" },
           from: { type: "string", description: "Start date (ISO 8601)" },
@@ -656,7 +652,6 @@ const WorkAgentPlugin = {
         "Gather data from all sources (Gmail, Calendar, Telegram) for a weekly report. Returns raw data for the agent to format.",
       parameters: {
         type: "object",
-        additionalProperties: false,
         properties: {
           projects: {
             type: "array",
