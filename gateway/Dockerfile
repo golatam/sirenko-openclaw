@@ -8,7 +8,7 @@ RUN npm install -g openclaw@2026.2.23
 
 WORKDIR /app
 COPY openclaw.json /app/openclaw.json
-COPY work-agent-plugin /app/work-agent-plugin
+COPY work-agent /app/work-agent
 COPY workspace /app/workspace-image
 
 ENV OPENCLAW_CONFIG_PATH=/app/openclaw.json

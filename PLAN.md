@@ -61,6 +61,37 @@
 
 Генерация нового токена: `openclaw models auth setup-token --provider anthropic`
 
+## Phase 3.5 — Память, проактивность и плагины
+
+### Память агента
+- [x] `memory-core` плагин включён (был заблокирован `plugins.allow`)
+- [x] Workspace перенесён на persistent volume (`/data/openclaw-state/workspace`)
+- [x] Статичные файлы (IDENTITY.md, USER.md) синхронизируются из image при старте
+- [ ] Перейти на `memory-lancedb` для auto-recall/auto-capture (нужен OpenAI API key для embeddings)
+
+### Проактивность
+- [x] Heartbeat — запущен по умолчанию
+- [ ] Создать `HEARTBEAT.md` в workspace — стоячие инструкции для heartbeat (проверка срочной почты, уведомления)
+- [ ] Включить cron: `"cron": { "enabled": true }` в `openclaw.json`
+- [ ] Настроить cron-задачи: утренний брифинг, еженедельный отчёт
+
+### Плагины (встроенные OpenClaw)
+
+**Включены:**
+- `work-agent` — кастомный плагин (Gmail, Calendar, Drive, Telegram)
+- `telegram` — канал Telegram Bot
+- `memory-core` — файловая память (MEMORY.md + daily logs)
+
+**Рекомендуется добавить:**
+- [ ] `diagnostics-otel` — метрики, трейсы, стоимость токенов (zero-dependency observability)
+
+**Рассмотреть позже:**
+- `memory-lancedb` — замена memory-core, семантический поиск (нужен OpenAI key)
+- `lobster` — цепочки тулов с approval gates (inbox triage, weekly review pipeline)
+- `whatsapp` — WhatsApp Business канал (Phase 2)
+
+**Не нужно:** остальные 30+ встроенных плагинов (Discord, Slack, IRC, Signal, Matrix, auth-провайдеры, voice-call, etc.)
+
 ## Phase 4 — Search & Reports (Pending)
 - Implement unified search across sources
 - Implement weekly reports and scheduling
