@@ -47,11 +47,13 @@ Gateway domain:
 - `GOOGLE_WORKSPACE_ACCOUNTS` JSON → per-account OAuth credentials с кэшированием
 - `requirements.txt` с pinned-версиями зависимостей
 - MCP Streamable HTTP: JSON responses, session management
+- ASGI middleware: camelCase → snake_case нормализация аргументов (OpenClaw конвертирует snake_case параметры)
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
 - `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 10 тулов
 - 30s AbortController таймаут на все fetch-вызовы
+- `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
 - Директория переименована `work-agent-plugin/` → `work-agent/` (соответствует manifest ID)
 
 ### Telegram
@@ -67,8 +69,8 @@ Gateway domain:
 - Cron-подсистема включена (задачи пока не настроены)
 
 ## Pending
-- [ ] Проверить end-to-end: отправка письма, создание события
-- [ ] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway (legacy)
+- [x] Проверить end-to-end: отправка письма, создание события (2026-02-25)
+- [x] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway (2026-02-25)
 - [ ] Настроить cron-задачи: утренний брифинг, еженедельный отчёт
 - [ ] Verify `telegram-sidecar` running and ingesting messages
 - [ ] WhatsApp channel login for Gateway

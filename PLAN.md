@@ -12,7 +12,7 @@
 - Verify ingestion in Postgres
 - Connect WhatsApp to Gateway
 
-## Phase 3 — Gmail/GCal/Drive Integration (In Progress)
+## Phase 3 — Gmail/GCal/Drive Integration (Done)
 - [x] Создан google-mcp-sidecar (workspace-mcp, Dockerfile, порт 8000)
 - [x] Плагин переписан: MCP-клиент на fetch(), 10 тулов вместо 5 стабов
 - [x] Конфиг обновлён: mcpServerUrl + dbUrl
@@ -21,8 +21,8 @@
 - [x] kirill@sirenko.ru — работает (single-account)
 - [x] **Мультиаккаунт** — свой MCP-сервер (без workspace-mcp)
 - [x] **Claude OAuth auth** — переход с platform API key на OAuth (Max подписка)
-- [ ] Проверить end-to-end: отправка письма, создание события
-- [ ] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway после проверки
+- [x] Проверить end-to-end: отправка письма, создание события
+- [x] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway после проверки
 
 ### Реализация мультиаккаунта
 
@@ -44,7 +44,7 @@
 **Railway env vars**:
 - `GOOGLE_WORKSPACE_ACCOUNTS` = JSON с тремя refresh-токенами
 - `GOOGLE_WORKSPACE_CLIENT_ID`, `GOOGLE_WORKSPACE_CLIENT_SECRET` — OAuth client
-- `GOOGLE_WORKSPACE_REFRESH_TOKEN` = legacy single-account — удалить после проверки
+- ~~`GOOGLE_WORKSPACE_REFRESH_TOKEN`~~ — удалён (2026-02-25)
 
 **Скрипт генерации токенов**: `google-mcp-sidecar/gen_token.py`
 

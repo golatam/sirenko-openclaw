@@ -158,6 +158,18 @@ async function queryTelegramMessages(
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a parameter that may arrive as snake_case or camelCase.
+ * OpenClaw may convert snake_case param names (e.g. message_id → messageId)
+ * when routing tool calls. This helper checks both forms.
+ */
+function param(params: Record<string, unknown>, snakeName: string): unknown {
+  if (params[snakeName] !== undefined) return params[snakeName];
+  const camelName = snakeName.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+  if (camelName !== snakeName && params[camelName] !== undefined) return params[camelName];
+  return undefined;
+}
+
 function ok(data: unknown, details: Record<string, unknown> = {}) {
   return {
     content: [
@@ -238,33 +250,31 @@ const WorkAgentPlugin = {
         },
         required: ["query"],
       },
-      async execute(params: {
-        query: string;
-        account?: string;
-        channel?: string;
-        from?: string;
-        to?: string;
-        limit?: number;
-      }) {
-        const channel = params.channel || "all";
+      async execute(params: Record<string, unknown>) {
+        const query = (param(params, "query") as string) || "";
+        const channel = (param(params, "channel") as string) || "all";
+        const account = param(params, "account") as string | undefined;
+        const from = param(params, "from") as string | undefined;
+        const to = param(params, "to") as string | undefined;
+        const limit = (param(params, "limit") as number) || 20;
         const results: { gmail?: unknown; telegram?: unknown } = {};
 
         // Gmail search
         if (channel === "all" || channel === "gmail") {
           try {
             const gmailQuery = [
-              params.query,
-              params.from ? `after:${params.from}` : "",
-              params.to ? `before:${params.to}` : "",
+              query,
+              from ? `after:${from}` : "",
+              to ? `before:${to}` : "",
             ]
               .filter(Boolean)
               .join(" ");
 
             const gmailArgs: Record<string, unknown> = {
               query: gmailQuery,
-              max_results: params.limit || 20,
+              max_results: limit,
             };
-            if (params.account) gmailArgs.account = params.account;
+            if (account) gmailArgs.account = account;
 
             results.gmail = await mcpCall("query_gmail_emails", gmailArgs);
           } catch (e) {
@@ -275,10 +285,10 @@ const WorkAgentPlugin = {
         // Telegram search
         if (channel === "all" || channel === "telegram") {
           try {
-            const tg = await queryTelegramMessages(params.query, {
-              from: params.from,
-              to: params.to,
-              limit: params.limit,
+            const tg = await queryTelegramMessages(query, {
+              from,
+              to,
+              limit,
             });
             results.telegram = tg;
           } catch (e) {
@@ -306,12 +316,15 @@ const WorkAgentPlugin = {
         },
         required: ["message_id"],
       },
-      async execute(params: { message_id: string; account?: string }) {
+      async execute(params: Record<string, unknown>) {
         try {
+          const messageId = param(params, "message_id") as string;
+          if (!messageId) return err("message_id is required");
           const args: Record<string, unknown> = {
-            message_id: params.message_id,
+            message_id: messageId,
           };
-          if (params.account) args.account = params.account;
+          const account = param(params, "account") as string | undefined;
+          if (account) args.account = account;
           const result = await mcpCall("gmail_get_message_details", args);
           return ok(result);
         } catch (e) {
@@ -341,23 +354,20 @@ const WorkAgentPlugin = {
         },
         required: ["to", "subject", "body"],
       },
-      async execute(params: {
-        account?: string;
-        to: string;
-        subject: string;
-        body: string;
-        cc?: string;
-        bcc?: string;
-      }) {
+      async execute(params: Record<string, unknown>) {
         try {
-          const args: Record<string, unknown> = {
-            to: params.to,
-            subject: params.subject,
-            body: params.body,
-          };
-          if (params.account) args.account = params.account;
-          if (params.cc) args.cc = params.cc;
-          if (params.bcc) args.bcc = params.bcc;
+          const to = param(params, "to") as string;
+          const subject = param(params, "subject") as string;
+          const body = param(params, "body") as string;
+          if (!to || !subject || !body) return err("to, subject, and body are required");
+
+          const args: Record<string, unknown> = { to, subject, body };
+          const account = param(params, "account") as string | undefined;
+          if (account) args.account = account;
+          const cc = param(params, "cc") as string | undefined;
+          if (cc) args.cc = cc;
+          const bcc = param(params, "bcc") as string | undefined;
+          if (bcc) args.bcc = bcc;
 
           const result = await mcpCall("gmail_send_email", args);
           return ok(result, { action: "email_sent" });
@@ -386,10 +396,11 @@ const WorkAgentPlugin = {
         },
         required: [],
       },
-      async execute(params: { account?: string }) {
+      async execute(params: Record<string, unknown>) {
         try {
           const args: Record<string, unknown> = {};
-          if (params.account) args.account = params.account;
+          const account = param(params, "account") as string | undefined;
+          if (account) args.account = account;
           const result = await mcpCall("calendar_get_events", args);
           return ok(result);
         } catch (e) {
@@ -429,21 +440,18 @@ const WorkAgentPlugin = {
         },
         required: [],
       },
-      async execute(params: {
-        account?: string;
-        calendar_id?: string;
-        time_min?: string;
-        time_max?: string;
-        max_results?: number;
-      }) {
+      async execute(params: Record<string, unknown>) {
         try {
           const args: Record<string, unknown> = {
-            calendar_id: params.calendar_id || "primary",
-            max_results: params.max_results || 10,
+            calendar_id: (param(params, "calendar_id") as string) || "primary",
+            max_results: (param(params, "max_results") as number) || 10,
           };
-          if (params.account) args.account = params.account;
-          if (params.time_min) args.time_min = params.time_min;
-          if (params.time_max) args.time_max = params.time_max;
+          const account = param(params, "account") as string | undefined;
+          if (account) args.account = account;
+          const timeMin = param(params, "time_min") as string | undefined;
+          if (timeMin) args.time_min = timeMin;
+          const timeMax = param(params, "time_max") as string | undefined;
+          if (timeMax) args.time_max = timeMax;
 
           const result = await mcpCall("calendar_get_events", args);
           return ok(result);
@@ -483,27 +491,27 @@ const WorkAgentPlugin = {
         },
         required: ["title", "start", "end"],
       },
-      async execute(params: {
-        account?: string;
-        title: string;
-        start: string;
-        end: string;
-        description?: string;
-        location?: string;
-        attendees?: string[];
-        calendar_id?: string;
-      }) {
+      async execute(params: Record<string, unknown>) {
         try {
+          const title = (param(params, "title") as string) || "";
+          const start = (param(params, "start") as string) || "";
+          const end = (param(params, "end") as string) || "";
+          if (!title || !start || !end) return err("title, start, and end are required");
+
           const args: Record<string, unknown> = {
-            summary: params.title,
-            start_time: params.start,
-            end_time: params.end,
-            calendar_id: params.calendar_id || "primary",
+            summary: title,
+            start_time: start,
+            end_time: end,
+            calendar_id: (param(params, "calendar_id") as string) || "primary",
           };
-          if (params.account) args.account = params.account;
-          if (params.description) args.description = params.description;
-          if (params.location) args.location = params.location;
-          if (params.attendees?.length) args.attendees = params.attendees;
+          const account = param(params, "account") as string | undefined;
+          if (account) args.account = account;
+          const description = param(params, "description") as string | undefined;
+          if (description) args.description = description;
+          const location = param(params, "location") as string | undefined;
+          if (location) args.location = location;
+          const attendees = param(params, "attendees") as string[] | undefined;
+          if (attendees?.length) args.attendees = attendees;
 
           const result = await mcpCall("create_calendar_event", args);
           return ok(result, { action: "event_created" });
@@ -537,17 +545,16 @@ const WorkAgentPlugin = {
         },
         required: ["query"],
       },
-      async execute(params: {
-        query: string;
-        account?: string;
-        max_results?: number;
-      }) {
+      async execute(params: Record<string, unknown>) {
         try {
+          const query = (param(params, "query") as string) || "";
+          if (!query) return err("query is required");
           const args: Record<string, unknown> = {
-            query: params.query,
-            max_results: params.max_results || 10,
+            query,
+            max_results: (param(params, "max_results") as number) || 10,
           };
-          if (params.account) args.account = params.account;
+          const account = param(params, "account") as string | undefined;
+          if (account) args.account = account;
           const result = await mcpCall("drive_search_files", args);
           return ok(result);
         } catch (e) {
@@ -572,10 +579,13 @@ const WorkAgentPlugin = {
         },
         required: ["file_id"],
       },
-      async execute(params: { file_id: string; account?: string }) {
+      async execute(params: Record<string, unknown>) {
         try {
-          const args: Record<string, unknown> = { file_id: params.file_id };
-          if (params.account) args.account = params.account;
+          const fileId = param(params, "file_id") as string;
+          if (!fileId) return err("file_id is required");
+          const args: Record<string, unknown> = { file_id: fileId };
+          const account = param(params, "account") as string | undefined;
+          if (account) args.account = account;
           const result = await mcpCall("drive_read_file_content", args);
           return ok(result);
         } catch (e) {
@@ -607,20 +617,19 @@ const WorkAgentPlugin = {
         },
         required: ["project"],
       },
-      async execute(params: {
-        project: string;
-        from?: string;
-        to?: string;
-        account?: string;
-      }) {
+      async execute(params: Record<string, unknown>) {
+        const project = (param(params, "project") as string) || "";
+        const from = param(params, "from") as string | undefined;
+        const to = param(params, "to") as string | undefined;
+        const account = param(params, "account") as string | undefined;
         const data: { gmail?: unknown; telegram?: unknown } = {};
 
         // Gmail
         try {
           const gmailQuery = [
-            params.project,
-            params.from ? `after:${params.from}` : "",
-            params.to ? `before:${params.to}` : "",
+            project,
+            from ? `after:${from}` : "",
+            to ? `before:${to}` : "",
           ]
             .filter(Boolean)
             .join(" ");
@@ -628,7 +637,7 @@ const WorkAgentPlugin = {
             query: gmailQuery,
             max_results: 50,
           };
-          if (params.account) args.account = params.account;
+          if (account) args.account = account;
           data.gmail = await mcpCall("query_gmail_emails", args);
         } catch (e) {
           data.gmail = { error: (e as Error).message };
@@ -636,16 +645,16 @@ const WorkAgentPlugin = {
 
         // Telegram
         try {
-          data.telegram = await queryTelegramMessages(params.project, {
-            from: params.from,
-            to: params.to,
+          data.telegram = await queryTelegramMessages(project, {
+            from,
+            to,
             limit: 50,
           });
         } catch (e) {
           data.telegram = { error: (e as Error).message };
         }
 
-        return ok(data, { project: params.project });
+        return ok(data, { project });
       },
     });
 
@@ -678,12 +687,10 @@ const WorkAgentPlugin = {
         },
         required: ["projects"],
       },
-      async execute(params: {
-        projects: string[];
-        week_start?: string;
-        week_end?: string;
-        account?: string;
-      }) {
+      async execute(params: Record<string, unknown>) {
+        const projects = (param(params, "projects") as string[]) || [];
+        const account = param(params, "account") as string | undefined;
+
         // Calculate default week boundaries
         const now = new Date();
         const dayOfWeek = now.getDay();
@@ -695,8 +702,8 @@ const WorkAgentPlugin = {
         sunday.setDate(monday.getDate() + 6);
         sunday.setHours(23, 59, 59, 999);
 
-        const weekStart = params.week_start || monday.toISOString();
-        const weekEnd = params.week_end || sunday.toISOString();
+        const weekStart = (param(params, "week_start") as string) || monday.toISOString();
+        const weekEnd = (param(params, "week_end") as string) || sunday.toISOString();
 
         const report: {
           period: { start: string; end: string };
@@ -708,7 +715,7 @@ const WorkAgentPlugin = {
         };
 
         // Per-project data
-        for (const project of params.projects) {
+        for (const project of projects) {
           const projectData: { gmail?: unknown; telegram?: unknown } = {};
 
           try {
@@ -717,7 +724,7 @@ const WorkAgentPlugin = {
               query: gmailQuery,
               max_results: 50,
             };
-            if (params.account) args.account = params.account;
+            if (account) args.account = account;
             projectData.gmail = await mcpCall("query_gmail_emails", args);
           } catch (e) {
             projectData.gmail = { error: (e as Error).message };
@@ -744,13 +751,13 @@ const WorkAgentPlugin = {
             time_max: weekEnd,
             max_results: 50,
           };
-          if (params.account) calArgs.account = params.account;
+          if (account) calArgs.account = account;
           report.calendar = await mcpCall("calendar_get_events", calArgs);
         } catch (e) {
           report.calendar = { error: (e as Error).message };
         }
 
-        return ok(report, { projects: params.projects });
+        return ok(report, { projects });
       },
     });
   },

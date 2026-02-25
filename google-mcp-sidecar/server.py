@@ -14,6 +14,7 @@ Env vars:
 import base64
 import json
 import os
+import re
 import sys
 from email.mime.text import MIMEText
 from typing import Any
@@ -483,6 +484,73 @@ def drive_read_file_content(file_id: str, account: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
+# ASGI middleware: normalize camelCase → snake_case in MCP tool arguments
+# ---------------------------------------------------------------------------
+#
+# OpenClaw converts snake_case parameter names (e.g. message_id, max_results,
+# file_id) to camelCase (messageId, maxResults, fileId) when routing MCP tool
+# calls. FastMCP binds arguments by Python function parameter names, so the
+# camelCase variants don't match. This middleware intercepts the JSON-RPC
+# request body and normalizes argument keys back to snake_case before FastMCP
+# processes them.
+
+def _camel_to_snake(name: str) -> str:
+    """Convert camelCase / PascalCase to snake_case."""
+    s1 = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+
+
+def _normalize_args_app(inner):
+    """ASGI middleware wrapper — normalizes camelCase tool arguments to snake_case."""
+
+    async def asgi(scope, receive, send):
+        if scope["type"] != "http":
+            return await inner(scope, receive, send)
+
+        # Buffer full request body
+        chunks = []
+        while True:
+            msg = await receive()
+            if msg["type"] == "http.request":
+                chunks.append(msg.get("body", b""))
+                if not msg.get("more_body", False):
+                    break
+            elif msg["type"] == "http.disconnect":
+                return
+
+        body = b"".join(chunks)
+
+        # Normalize camelCase arguments in tools/call requests
+        try:
+            data = json.loads(body)
+            if isinstance(data, dict) and data.get("method") == "tools/call":
+                args = data.get("params", {}).get("arguments", {})
+                if args and isinstance(args, dict):
+                    normalized = {_camel_to_snake(k): v for k, v in args.items()}
+                    if normalized != args:
+                        data["params"]["arguments"] = normalized
+                        body = json.dumps(data).encode("utf-8")
+                        print(f"[NORMALIZE] {list(args)} → {list(normalized)}",
+                              flush=True, file=sys.stderr)
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass
+
+        # Feed (possibly modified) body to inner app
+        fed = False
+
+        async def patched_receive():
+            nonlocal fed
+            if not fed:
+                fed = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        return await inner(scope, patched_receive, send)
+
+    return asgi
+
+
+# ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 
@@ -495,7 +563,7 @@ except Exception:
 # Bypass MCP DNS rebinding Host validation for Railway internal networking
 TransportSecurityMiddleware._validate_host = lambda self, host: True
 
-app = mcp.streamable_http_app()
+app = _normalize_args_app(mcp.streamable_http_app())
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
