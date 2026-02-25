@@ -1,5 +1,19 @@
 .DS_Store
 
-# Python virtualenvs
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Node
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+*.env
+
+# Python virtualenvs (legacy paths)
 telegram-sidecar/.venv/
 telegram-sidecar/.venv39/

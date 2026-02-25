@@ -4,10 +4,18 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 // MCP client — lightweight JSON-RPC 2.0 over HTTP (Node.js 22 native fetch)
 // ---------------------------------------------------------------------------
 
+const MCP_TIMEOUT_MS = 30_000;
+
 let _mcpUrl: string | undefined;
 let _dbUrl: string | undefined;
 let _mcpSessionId: string | undefined;
 let _mcpInitPromise: Promise<void> | undefined;
+
+function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = MCP_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 function mcpUrl(): string {
   if (!_mcpUrl) throw new Error("mcpServerUrl is not configured");
@@ -33,7 +41,7 @@ async function parseMcpBody(res: Response): Promise<{ result?: unknown; error?: 
 }
 
 async function mcpInit(): Promise<void> {
-  const res = await fetch(`${mcpUrl()}/mcp`, {
+  const res = await fetchWithTimeout(`${mcpUrl()}/mcp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -78,7 +86,7 @@ async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
   };
   if (_mcpSessionId) headers["Mcp-Session-Id"] = _mcpSessionId;
 
-  const res = await fetch(`${mcpUrl()}/mcp`, {
+  const res = await fetchWithTimeout(`${mcpUrl()}/mcp`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -99,7 +107,7 @@ async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
         Accept: "application/json, text/event-stream",
       };
       if (_mcpSessionId) headers2["Mcp-Session-Id"] = _mcpSessionId;
-      const res2 = await fetch(`${mcpUrl()}/mcp`, {
+      const res2 = await fetchWithTimeout(`${mcpUrl()}/mcp`, {
         method: "POST",
         headers: headers2,
         body: JSON.stringify({

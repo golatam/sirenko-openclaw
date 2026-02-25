@@ -69,10 +69,10 @@
 ## Phase 5 — Архитектурные улучшения
 
 ### Критичные (делать сейчас)
-- [ ] Убрать дубликат `work-agent-plugin/` (оставить только `gateway/work-agent-plugin/`)
-- [ ] Добавить `requirements.txt` для google-mcp-sidecar с пинами версий
-- [ ] Добавить таймаут (AbortController) на fetch() в MCP-клиенте (`index.ts`)
-- [ ] Расширить `.gitignore` — исключить `*.env`, `__pycache__/`, `node_modules/`
+- [x] Убрать дубликат `work-agent-plugin/` (оставить только `gateway/work-agent-plugin/`)
+- [x] Добавить `requirements.txt` для google-mcp-sidecar с пинами версий
+- [x] Добавить таймаут (AbortController) на fetch() в MCP-клиенте (`index.ts`)
+- [x] Расширить `.gitignore` — исключить `*.env`, `__pycache__/`, `node_modules/`
 
 ### Важные (улучшают надёжность)
 - [ ] Реструктурировать репо: `services/` + `plugins/` вместо плоской структуры
