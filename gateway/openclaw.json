@@ -28,7 +28,10 @@
   },
   "plugins": {
     "enabled": true,
-    "allow": ["work-agent", "telegram"],
+    "allow": ["work-agent", "telegram", "memory-core"],
+    "slots": {
+      "memory": "memory-core"
+    },
     "load": {
       "paths": ["/app/work-agent-plugin"]
     },
@@ -41,6 +44,9 @@
         "config": {
           "mcpServerUrl": "${GOOGLE_MCP_URL}"
         }
+      },
+      "memory-core": {
+        "enabled": true
       }
     }
   }
