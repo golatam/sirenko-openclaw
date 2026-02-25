@@ -17,6 +17,14 @@ for f in IDENTITY.md USER.md .gitkeep; do
   fi
 done
 
+# Seed-only files: copy from image ONLY if not yet on volume (agent may edit at runtime)
+for f in HEARTBEAT.md; do
+  if [ -f "/app/workspace-image/$f" ] && [ ! -f "$PERSIST_WORKSPACE/$f" ]; then
+    cp "/app/workspace-image/$f" "$PERSIST_WORKSPACE/$f"
+    echo "[entrypoint] Seeded $f"
+  fi
+done
+
 echo "[entrypoint] Workspace on persistent volume: $PERSIST_WORKSPACE"
 
 # Write OAuth auth profile from env var (Max subscription token)
