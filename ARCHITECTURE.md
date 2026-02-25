@@ -9,23 +9,45 @@ Use OpenClaw Gateway as the primary runtime and add:
 - A Telegram MTProto sidecar for **user accounts** (3 accounts).
 
 **Services**
-1. OpenClaw Gateway
-- WhatsApp channel (Baileys) via Gateway.
-- Control UI for management.
-- Tools exposed via `work-agent` plugin.
+1. OpenClaw Gateway (`gateway/`)
+- Node.js 22, OpenClaw v2026.2.23
+- Telegram bot channel (Telegram Bot API)
+- WhatsApp channel (Baileys) — pending
+- Control UI for management
+- Tools exposed via `work-agent` plugin
+- Plugins: `work-agent`, `telegram`, `memory-core`
+- Cron-подсистема для запланированных задач
+- Heartbeat для проактивных проверок (каждые ~30 мин)
 
-2. Telegram Sidecar (MTProto)
-- Logs into 3 user accounts.
-- Ingests messages into Postgres.
-- Optional outbound sending hook later.
+2. Google MCP Sidecar (`google-mcp-sidecar/`)
+- Python 3.12, FastMCP (`stateless_http=True`)
+- google-api-python-client напрямую (без workspace-mcp)
+- 7 MCP-тулов с `account` параметром для мультиаккаунта
+- OAuth credentials через `GOOGLE_WORKSPACE_ACCOUNTS` JSON
+- Transport: MCP Streamable HTTP (JSON-RPC 2.0), порт 8000
+
+3. Telegram Sidecar (`telegram-sidecar/`)
+- Python 3.11, Telethon (MTProto)
+- Logs into 3 user accounts via StringSession
+- Ingests messages into Postgres
+- Optional outbound sending hook later
 
 **Data**
 Postgres (shared):
-- `messages`: normalized message store for search + summaries.
-- `projects`: project metadata and labels.
-- `accounts`: connected identities (gmail/gcal/telegram/whatsapp).
-- `reports`: stored weekly report outputs.
-- `jobs`: background tasks (sync, report generation).
+- `messages`: normalized message store with GIN index for full-text search
+- `accounts`: connected identities (telegram user accounts)
+
+**Persistent Storage (Railway Volumes)**
+- `gateway-volume` → `/data/openclaw-state`:
+  - `workspace/` — agent workspace (IDENTITY.md, USER.md, HEARTBEAT.md, memory/, MEMORY.md)
+  - `agents/` — auth profiles, session data
+  - `cron/jobs.json` — scheduled tasks
+- `telegram-sidecar-volume` → `/data` — Telethon session files
+
+**Workspace File Lifecycle**
+- **Always-overwrite** (source of truth = git): `IDENTITY.md`, `USER.md`
+- **Seed-only** (agent может менять в runtime): `HEARTBEAT.md`
+- **Runtime-only** (создаются агентом): `MEMORY.md`, `memory/*.md`
 
 **Tool Surface (OpenClaw)**
 - `work_search_messages` — поиск по Gmail + Telegram
@@ -40,31 +62,23 @@ Postgres (shared):
 - `work_weekly_report` — агрегация за неделю
 
 **Google Workspace Backend**
-Тулы `work_*` вызывают google-mcp-sidecar через HTTP (JSON-RPC 2.0).
-Сайдкар — это `workspace-mcp` (taylorwilsdon/google_workspace_mcp), запущенный
-с Streamable HTTP транспортом. OAuth-токены хранятся в Redis.
+Тулы `work_*` вызывают google-mcp-sidecar через HTTP (JSON-RPC 2.0, MCP Streamable HTTP).
+Сайдкар — свой MCP-сервер на FastMCP + google-api-python-client.
+OAuth credentials кэшируются per-account. Все fetch-вызовы с 30s AbortController таймаутом.
+
+**Proactivity**
+- **Heartbeat** (~30 мин): проверка срочной почты, напоминания о встречах. Инструкции в `HEARTBEAT.md`.
+- **Cron**: запланированные задачи (утренний брифинг, еженедельный отчёт). Агент может создавать cron-задачи через встроенные `cron.add` / `cron.remove` тулы.
+- **Memory**: `memory-core` плагин — `MEMORY.md` (долгосрочная память) + `memory/YYYY-MM-DD.md` (дневные логи).
 
 **Security / Guardrails**
-- All write tools should require confirmation before execution.
-- Explicit allowlist of tools in OpenClaw config.
-- Separate Telegram sidecar for isolation.
+- All write tools should require confirmation before execution
+- Explicit allowlist of plugins in OpenClaw config
+- Separate Telegram sidecar for isolation
+- Secrets stored only in Railway env vars, never committed
 
 **Railway Topology**
-- Service A: `gateway` (OpenClaw)
-- Service B: `telegram-sidecar`
-- Service C: `google-mcp-sidecar` (workspace-mcp, порт 8000)
+- Service A: `gateway` (OpenClaw) + volume `/data/openclaw-state`
+- Service B: `google-mcp-sidecar` (FastMCP, порт 8000)
+- Service C: `telegram-sidecar` + volume `/data`
 - Add-ons: Postgres + Redis
-- Persistent volume for Telegram session files
-
-**Operational Flow**
-1. Messages arrive via WhatsApp or Telegram.
-2. Ingested and normalized into Postgres.
-3. OpenClaw tools query Postgres for search/summaries.
-4. Reports generated on-demand or via cron.
-
-**Next Implementation Steps**
-1. Enable `work-agent` plugin path in `~/.openclaw/openclaw.json`.
-2. Add OAuth clients for Gmail/GCal in OpenClaw config.
-3. Build Telegram sidecar service with MTProto login.
-4. Wire indexing + summaries to Postgres.
-5. Deploy both services on Railway.
