@@ -1,7 +1,7 @@
 {
   "agents": {
     "defaults": {
-      "workspace": "/app/workspace"
+      "workspace": "/data/openclaw-state/workspace"
     }
   },
   "gateway": {

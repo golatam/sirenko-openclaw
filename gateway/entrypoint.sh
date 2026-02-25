@@ -4,6 +4,21 @@ set -e
 STATE_DIR="${OPENCLAW_STATE_DIR:-/root/.openclaw}"
 AUTH_DIR="$STATE_DIR/agents/main/agent"
 
+# --- Persistent workspace on volume ---
+# Static files (IDENTITY.md, USER.md) come from the image.
+# Runtime files (memory/, MEMORY.md, etc.) live on the persistent volume.
+PERSIST_WORKSPACE="$STATE_DIR/workspace"
+mkdir -p "$PERSIST_WORKSPACE"
+
+# Sync static identity files from image → volume (always overwrite with latest from git)
+for f in IDENTITY.md USER.md .gitkeep; do
+  if [ -f "/app/workspace-image/$f" ]; then
+    cp "/app/workspace-image/$f" "$PERSIST_WORKSPACE/$f"
+  fi
+done
+
+echo "[entrypoint] Workspace on persistent volume: $PERSIST_WORKSPACE"
+
 # Write OAuth auth profile from env var (Max subscription token)
 if [ -n "$ANTHROPIC_OAUTH_TOKEN" ]; then
   mkdir -p "$AUTH_DIR"
