@@ -20,7 +20,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 4. **PostgreSQL** — общий на Railway. Схема в `telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
 
-Плагин (`gateway/work-agent/index.ts`) регистрирует 10 тулов через OpenClaw plugin SDK. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
+Плагин (`gateway/work-agent/index.ts`) регистрирует 10 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
 
 ## Persistent Storage
 

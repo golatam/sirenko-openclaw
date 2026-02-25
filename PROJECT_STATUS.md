@@ -53,7 +53,9 @@ Gateway domain:
 ### Plugin (work-agent)
 - `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 10 тулов
 - 30s AbortController таймаут на все fetch-вызовы
+- `extractParams()` helper: извлекает params из `execute(toolUseId, params, context, callback)` (OpenClaw передаёт 4 аргумента, не 1)
 - `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
+- Email send: параметр `message` (не `body` — конфликтует с OpenClaw) → маппится в `body` для сайдкара
 - Директория переименована `work-agent-plugin/` → `work-agent/` (соответствует manifest ID)
 
 ### Telegram

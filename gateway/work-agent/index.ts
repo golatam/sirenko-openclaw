@@ -159,6 +159,18 @@ async function queryTelegramMessages(
 // ---------------------------------------------------------------------------
 
 /**
+ * Extract the params object from execute() arguments.
+ * OpenClaw calls execute(toolUseId, params, context, callback) — 4 args.
+ * This helper safely extracts the params object regardless of call convention.
+ */
+function extractParams(rawArgs: unknown[]): Record<string, unknown> {
+  if (typeof rawArgs[0] === "string" && rawArgs.length > 1 && typeof rawArgs[1] === "object" && rawArgs[1] !== null) {
+    return rawArgs[1] as Record<string, unknown>;
+  }
+  return (rawArgs[0] as Record<string, unknown>) ?? {};
+}
+
+/**
  * Resolve a parameter that may arrive as snake_case or camelCase.
  * OpenClaw may convert snake_case param names (e.g. message_id → messageId)
  * when routing tool calls. This helper checks both forms.
@@ -250,7 +262,8 @@ const WorkAgentPlugin = {
         },
         required: ["query"],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         const query = (param(params, "query") as string) || "";
         const channel = (param(params, "channel") as string) || "all";
         const account = param(params, "account") as string | undefined;
@@ -316,7 +329,8 @@ const WorkAgentPlugin = {
         },
         required: ["message_id"],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         try {
           const messageId = param(params, "message_id") as string;
           if (!messageId) return err("message_id is required");
@@ -348,20 +362,21 @@ const WorkAgentPlugin = {
           },
           to: { type: "string", description: "Recipient email address" },
           subject: { type: "string", description: "Email subject" },
-          body: { type: "string", description: "Email body (plain text or HTML)" },
+          message: { type: "string", description: "Email body (plain text or HTML)" },
           cc: { type: "string", description: "CC recipients (comma-separated)" },
           bcc: { type: "string", description: "BCC recipients (comma-separated)" },
         },
-        required: ["to", "subject", "body"],
+        required: ["to", "subject", "message"],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         try {
           const to = param(params, "to") as string;
           const subject = param(params, "subject") as string;
-          const body = param(params, "body") as string;
-          if (!to || !subject || !body) return err("to, subject, and body are required");
+          const message = param(params, "message") as string;
+          if (!to || !subject || !message) return err("to, subject, and message are required");
 
-          const args: Record<string, unknown> = { to, subject, body };
+          const args: Record<string, unknown> = { to, subject, body: message };
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
           const cc = param(params, "cc") as string | undefined;
@@ -396,7 +411,8 @@ const WorkAgentPlugin = {
         },
         required: [],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         try {
           const args: Record<string, unknown> = {};
           const account = param(params, "account") as string | undefined;
@@ -440,7 +456,8 @@ const WorkAgentPlugin = {
         },
         required: [],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         try {
           const args: Record<string, unknown> = {
             calendar_id: (param(params, "calendar_id") as string) || "primary",
@@ -491,7 +508,8 @@ const WorkAgentPlugin = {
         },
         required: ["title", "start", "end"],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         try {
           const title = (param(params, "title") as string) || "";
           const start = (param(params, "start") as string) || "";
@@ -545,7 +563,8 @@ const WorkAgentPlugin = {
         },
         required: ["query"],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         try {
           const query = (param(params, "query") as string) || "";
           if (!query) return err("query is required");
@@ -579,7 +598,8 @@ const WorkAgentPlugin = {
         },
         required: ["file_id"],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         try {
           const fileId = param(params, "file_id") as string;
           if (!fileId) return err("file_id is required");
@@ -617,7 +637,8 @@ const WorkAgentPlugin = {
         },
         required: ["project"],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         const project = (param(params, "project") as string) || "";
         const from = param(params, "from") as string | undefined;
         const to = param(params, "to") as string | undefined;
@@ -687,7 +708,8 @@ const WorkAgentPlugin = {
         },
         required: ["projects"],
       },
-      async execute(params: Record<string, unknown>) {
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
         const projects = (param(params, "projects") as string[]) || [];
         const account = param(params, "account") as string | undefined;
 
