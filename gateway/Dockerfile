@@ -14,4 +14,7 @@ COPY workspace /app/workspace
 ENV OPENCLAW_CONFIG_PATH=/app/openclaw.json
 ENV NODE_ENV=production
 
-CMD ["/bin/sh", "-c", "rm -rf /data/openclaw-state/agents/main/sessions 2>/dev/null; find /data/openclaw-state -name '*.lock' -delete 2>/dev/null; exec openclaw gateway run --allow-unconfigured --port ${PORT:-18789}"]
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+CMD ["/app/entrypoint.sh"]

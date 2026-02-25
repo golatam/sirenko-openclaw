@@ -20,6 +20,7 @@
 - [x] OAuth-авторизация — 3 refresh token'а получены
 - [x] kirill@sirenko.ru — работает (single-account)
 - [x] **Мультиаккаунт** — свой MCP-сервер (без workspace-mcp)
+- [x] **Claude OAuth auth** — переход с platform API key на OAuth (Max подписка)
 - [ ] Проверить end-to-end: отправка письма, создание события
 - [ ] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway после проверки
 
@@ -47,12 +48,46 @@
 
 **Скрипт генерации токенов**: `google-mcp-sidecar/gen_token.py`
 
+### Аутентификация Anthropic (Claude)
+
+**Было**: `ANTHROPIC_API_KEY` (платформенный ключ, оплата per-call)
+**Стало**: `ANTHROPIC_OAUTH_TOKEN` (OAuth через Claude Max подписка)
+
+Как работает:
+- `gateway/entrypoint.sh` при старте пишет `auth-profiles.json` из env var
+- OpenClaw читает auth store и использует OAuth токен
+- Используется `type: "api_key"` в auth-profiles (OpenClaw воспринимает OAuth token как API key)
+- `ANTHROPIC_API_KEY` удалён — OpenClaw его всё равно очищает (clearEnv)
+
+Генерация нового токена: `openclaw models auth setup-token --provider anthropic`
+
 ## Phase 4 — Search & Reports (Pending)
 - Implement unified search across sources
 - Implement weekly reports and scheduling
 - Add tool guardrails and confirmation flows
 
-## Phase 5 — Hardening (Pending)
+## Phase 5 — Архитектурные улучшения
+
+### Критичные (делать сейчас)
+- [ ] Убрать дубликат `work-agent-plugin/` (оставить только `gateway/work-agent-plugin/`)
+- [ ] Добавить `requirements.txt` для google-mcp-sidecar с пинами версий
+- [ ] Добавить таймаут (AbortController) на fetch() в MCP-клиенте (`index.ts`)
+- [ ] Расширить `.gitignore` — исключить `*.env`, `__pycache__/`, `node_modules/`
+
+### Важные (улучшают надёжность)
+- [ ] Реструктурировать репо: `services/` + `plugins/` вместо плоской структуры
+- [ ] Реализовать Telegram search — REST API на telegram-sidecar с PostgreSQL full-text
+- [ ] Добавить health check endpoints на оба сайдкара
+- [ ] Создать `docker-compose.yml` для локальной разработки (3 сервиса + Postgres)
+
+### Желательные (масштабируемость)
+- [ ] Выделить MCP-клиент из `index.ts` в отдельный `mcp-client.ts`
+- [ ] Абстракция `adapter.ts` над OpenClaw Plugin SDK (защита от обновлений)
+- [ ] Feature branches workflow вместо прямых коммитов в main
+- [ ] Git tags для версий деплоя (`v0.1.0`, `v0.2.0`)
+- [ ] Smoke-тесты: gateway запускается, MCP-сервер отвечает на health
+
+## Phase 6 — Hardening (Pending)
 - Monitoring and health checks
 - Backups + retention
 - Access policy review
