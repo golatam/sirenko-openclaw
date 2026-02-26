@@ -4,7 +4,9 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g openclaw@2026.2.23
+RUN npm install -g openclaw@2026.2.23 \
+  && cd /usr/local/lib/node_modules/openclaw/extensions/diagnostics-otel \
+  && npm install --production
 
 WORKDIR /app
 COPY openclaw.json /app/openclaw.json
