@@ -5,16 +5,47 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 // ---------------------------------------------------------------------------
 
 const MCP_TIMEOUT_MS = 30_000;
+const FETCH_MAX_RETRIES = 3;
+const FETCH_RETRY_BASE_MS = 1_000; // 1s, 2s, 4s
 
 let _mcpUrl: string | undefined;
 let _tgSidecarUrl: string | undefined;
 let _mcpSessionId: string | undefined;
 let _mcpInitPromise: Promise<void> | undefined;
 
-function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = MCP_TIMEOUT_MS): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = MCP_TIMEOUT_MS): Promise<Response> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= FETCH_MAX_RETRIES; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+      return res;
+    } catch (e) {
+      lastError = e as Error;
+      // Only retry on network-level errors (fetch failed, ECONNREFUSED, DNS, abort/timeout)
+      // Do NOT retry if we got an HTTP response (that's handled by callers)
+      const msg = lastError.message || "";
+      const isNetworkError = msg.includes("fetch failed") ||
+        msg.includes("ECONNREFUSED") ||
+        msg.includes("ENOTFOUND") ||
+        msg.includes("ETIMEDOUT") ||
+        msg.includes("UND_ERR_CONNECT_TIMEOUT") ||
+        msg.includes("abort") ||
+        lastError.name === "AbortError";
+      if (!isNetworkError || attempt === FETCH_MAX_RETRIES) {
+        throw lastError;
+      }
+      const delayMs = FETCH_RETRY_BASE_MS * Math.pow(2, attempt);
+      console.error(`[work-agent] fetch attempt ${attempt + 1} failed (${msg}), retrying in ${delayMs}ms...`);
+      await sleep(delayMs);
+    }
+  }
+  throw lastError!;
 }
 
 function mcpUrl(): string {
@@ -70,61 +101,55 @@ async function mcpInit(): Promise<void> {
 async function ensureMcpSession(): Promise<void> {
   if (_mcpSessionId) return;
   if (!_mcpInitPromise) {
-    _mcpInitPromise = mcpInit().catch((e) => {
-      _mcpInitPromise = undefined;
-      throw e;
-    });
+    _mcpInitPromise = mcpInit()
+      .then(() => {
+        console.error("[work-agent] MCP session initialized, sessionId:", _mcpSessionId);
+      })
+      .catch((e) => {
+        console.error("[work-agent] MCP init failed:", (e as Error).message);
+        _mcpInitPromise = undefined;
+        throw e;
+      });
   }
   await _mcpInitPromise;
 }
 
 async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
   await ensureMcpSession();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json, text/event-stream",
-  };
-  if (_mcpSessionId) headers["Mcp-Session-Id"] = _mcpSessionId;
 
-  const res = await fetchWithTimeout(`${mcpUrl()}/mcp`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: Date.now(),
-      method: "tools/call",
-      params: { name: toolName, arguments: args },
-    }),
-  });
+  const doCall = async (): Promise<Response> => {
+    const hdrs: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    };
+    if (_mcpSessionId) hdrs["Mcp-Session-Id"] = _mcpSessionId;
+    return fetchWithTimeout(`${mcpUrl()}/mcp`, {
+      method: "POST",
+      headers: hdrs,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: Date.now(),
+        method: "tools/call",
+        params: { name: toolName, arguments: args },
+      }),
+    });
+  };
+
+  let res = await doCall();
   if (!res.ok) {
     // Session expired — reset and retry once
     if (res.status === 404 || res.status === 400) {
+      console.error(`[work-agent] MCP session expired (${res.status}), re-initializing...`);
       _mcpSessionId = undefined;
       _mcpInitPromise = undefined;
       await ensureMcpSession();
-      const headers2: Record<string, string> = {
-        "Content-Type": "application/json",
-        Accept: "application/json, text/event-stream",
-      };
-      if (_mcpSessionId) headers2["Mcp-Session-Id"] = _mcpSessionId;
-      const res2 = await fetchWithTimeout(`${mcpUrl()}/mcp`, {
-        method: "POST",
-        headers: headers2,
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: Date.now(),
-          method: "tools/call",
-          params: { name: toolName, arguments: args },
-        }),
-      });
-      if (!res2.ok) {
-        throw new Error(`MCP HTTP ${res2.status}: ${await res2.text()}`);
+      res = await doCall();
+      if (!res.ok) {
+        throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
       }
-      const json2 = await parseMcpBody(res2);
-      if (json2.error) throw new Error(json2.error.message);
-      return json2.result;
+    } else {
+      throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
     }
-    throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
   }
   const json = await parseMcpBody(res);
   if (json.error) throw new Error(json.error.message);
@@ -148,6 +173,7 @@ async function queryMessages(
   if (opts.to) body.to = opts.to;
   if (opts.limit) body.limit = opts.limit;
 
+  console.error(`[work-agent] queryMessages: ${_tgSidecarUrl}/search source=${opts.source || "all"}`);
   const res = await fetchWithTimeout(`${_tgSidecarUrl}/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -162,7 +188,7 @@ async function queryMessages(
   return {
     rows: data.messages || [],
     total: data.total || 0,
-    source: "telegram",
+    source: opts.source || "all",
   };
 }
 
