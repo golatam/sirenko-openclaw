@@ -97,6 +97,7 @@ Gateway domain:
 - [x] Verify `telegram-sidecar` running and ingesting messages (2026-02-26, 4179+ msgs)
 - [x] Telegram search — REST API на sidecar с PostgreSQL full-text (2026-02-26)
 - [x] WhatsApp sidecar: Baileys ingestion, QR-паринг, деплой на Railway (2026-02-26)
+- [ ] Voice messages: включить транскрипцию голосовых (см. Phase 4 в PLAN.md)
 
 ## Files Structure
 ```

@@ -93,12 +93,63 @@
 
 **Не нужно:** остальные 30+ встроенных плагинов (Discord, Slack, IRC, Signal, Matrix, auth-провайдеры, voice-call, etc.)
 
-## Phase 4 — Search & Reports (Pending)
+## Phase 4 — Voice Messages (Pending)
+
+Голосовые сообщения сейчас полностью теряются — OpenClaw'овский telegram-плагин дропает voice, сайдкары сохраняют только text.
+
+### Ресёрч STT-провайдеров (2026-02-26)
+
+| Провайдер | Цена/мин | Latency (60с) | Русский | Free tier |
+|-----------|----------|---------------|---------|-----------|
+| **Groq Whisper v3** | $0.002 | <0.5с | ~5-8% WER, проверен | 480 мин/день бессрочно |
+| Deepgram Nova-3 | $0.008 | <0.3с | Proprietary, WER не публикуют | $200 кредитов (~433ч) |
+| OpenAI Whisper | $0.006 | 3-10с | ~5-8% WER | Нет |
+| Google Cloud STT | $0.016-0.036 | 2-5с | Хорошо | 60 мин/мес |
+| Self-hosted Whisper | ~$10/мес flat | 15-30с (CPU) | Зависит от модели | — |
+
+**Выбор: Groq Whisper Large v3** — дешевле всех, быстрее всех, лучший русский, OpenAI-совместимый API.
+
+Deepgram сильнее в streaming, diarization, code-switching — но для batch-транскрипции коротких голосовых это не нужно. Claude API не поддерживает аудио вход. Telegram built-in — Premium-only.
+
+### 4a — Бот-канал: ты → Сирен (приоритет)
+
+OpenClaw v2026.2.23 имеет встроенный media pipeline для аудио (`tools.media.audio`). Достаточно конфига + API key.
+
+- OpenClaw скачивает voice через Bot API `getFile()`, отправляет в Groq, подставляет транскрипт в `{{Transcript}}`
+- OGG/Opus (нативный формат голосовых Telegram) — конвертация не нужна
+- В группах с `requireMention: true` голосовые транскрибируются до проверки упоминания
+
+```json
+"tools": {
+  "media": {
+    "audio": {
+      "enabled": true,
+      "models": [{ "provider": "groq", "model": "whisper-large-v3" }]
+    }
+  }
+}
+```
+
+- [ ] Добавить `tools.media.audio` в `gateway/openclaw.json` (Groq provider)
+- [ ] Получить `GROQ_API_KEY` на groq.com и добавить в Railway env vars (сервис gateway)
+- [ ] Задеплоить gateway
+- [ ] Тест: отправить голосовое боту в Telegram
+
+### 4b — Ingestion: голосовые в мониторимых чатах (вторично)
+
+Сайдкары дропают voice-сообщения при ingestion (text=NULL). Для поиска по чужим голосовым нужна отдельная транскрипция в сайдкарах.
+
+- [ ] telegram-sidecar: детектить voice/audio, скачивать через Telethon `download_media()`, транскрибировать через Groq
+- [ ] whatsapp-sidecar: детектить `audioMessage`, скачивать через Baileys `downloadMediaMessage()`, транскрибировать через Groq
+- [ ] metadata_json: добавить `media_type: "voice"` (схема JSONB уже поддерживает)
+- [ ] Добавить `GROQ_API_KEY` в Railway env vars (оба сайдкара)
+
+## Phase 5 — Search & Reports (Pending)
 - Implement unified search across sources
 - Implement weekly reports and scheduling
 - Add tool guardrails and confirmation flows
 
-## Phase 5 — Архитектурные улучшения
+## Phase 6 — Архитектурные улучшения
 
 ### Критичные (делать сейчас)
 - [x] Убрать дубликат `work-agent-plugin/` (оставить только `gateway/work-agent-plugin/`)
@@ -119,7 +170,7 @@
 - [ ] Git tags для версий деплоя (`v0.1.0`, `v0.2.0`)
 - [ ] Smoke-тесты: gateway запускается, MCP-сервер отвечает на health
 
-## Phase 6 — Hardening (Pending)
+## Phase 7 — Hardening (Pending)
 - Monitoring and health checks
 - Backups + retention
 - Access policy review
