@@ -83,6 +83,13 @@ Gateway domain:
 - Данные: daily breakdown (tokens, cost USD), per-model usage
 - Используется `loadCostUsageSummary()` из OpenClaw Plugin SDK (internal module, version pinned)
 
+### Slack
+- Slack канал — built-in в OpenClaw (не плагин), Socket Mode (WebSocket)
+- `dmPolicy: "open"` — DM доступен всем
+- `groupPolicy: "open"` — бот отвечает в каналах (mention-gated по умолчанию: нужен @mention или реплай в треде)
+- `nativeStreaming: true` — ответы печатаются в реальном времени
+- Токены: `SLACK_APP_TOKEN` (xapp-...) + `SLACK_BOT_TOKEN` (xoxb-...) в Railway env vars
+
 ### Агент (Сирен)
 - Персона: IDENTITY.md (стиль, тон), USER.md (предпочтения, аккаунты)
 - `memory-core` плагин включён — persistent memory (MEMORY.md + daily logs)

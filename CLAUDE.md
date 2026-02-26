@@ -12,7 +12,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 Три сервиса + общая БД, деплой на Railway:
 
-1. **OpenClaw Gateway** (`gateway/`) — Node.js 22, OpenClaw v2026.2.23 (глобально). Загружает плагин `work-agent` по пути. HTTP API + Telegram бот-канал. Конфиг: `gateway/openclaw.json`. Персона агента: `gateway/workspace/IDENTITY.md` и `gateway/workspace/USER.md`. Heartbeat: `gateway/workspace/HEARTBEAT.md`.
+1. **OpenClaw Gateway** (`gateway/`) — Node.js 22, OpenClaw v2026.2.23 (глобально). Загружает плагин `work-agent` по пути. HTTP API + Telegram бот-канал + Slack (Socket Mode, DM + каналы). Конфиг: `gateway/openclaw.json`. Персона агента: `gateway/workspace/IDENTITY.md` и `gateway/workspace/USER.md`. Heartbeat: `gateway/workspace/HEARTBEAT.md`.
 
 2. **Telegram Sidecar** (`telegram-sidecar/`) — Python 3.11 asyncio, Telethon (MTProto). Логинится в 3 пользовательских аккаунта через StringSession, пишет сообщения в PostgreSQL. HTTP search API (source-agnostic: ищет и Telegram, и WhatsApp). Точка входа: `main.py`.
 

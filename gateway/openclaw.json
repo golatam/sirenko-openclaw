@@ -35,6 +35,7 @@
       "botToken": "${SLACK_BOT_TOKEN}",
       "dmPolicy": "open",
       "allowFrom": ["*"],
+      "groupPolicy": "open",
       "streaming": "partial",
       "nativeStreaming": true
     }
