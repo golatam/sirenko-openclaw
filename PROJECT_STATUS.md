@@ -54,6 +54,8 @@ Gateway domain:
 ### Plugin (work-agent)
 - `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 12 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info)
 - `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
+- `work_health_check` — проверяет связность всех сайдкаров (Google MCP, Telegram, WhatsApp); heartbeat алертит если сервис лежит
+- Retry с exponential backoff (до 3 попыток, 1s/2s/4s) на сетевые ошибки fetch (fetch failed, ECONNREFUSED, DNS)
 - 30s AbortController таймаут на все fetch-вызовы
 - `extractParams()` helper: извлекает params из `execute(toolUseId, params, context, callback)` (OpenClaw передаёт 4 аргумента, не 1)
 - `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
@@ -109,7 +111,9 @@ Gateway domain:
 - [x] Telegram search — REST API на sidecar с PostgreSQL full-text (2026-02-26)
 - [x] WhatsApp sidecar: Baileys ingestion, QR-паринг, деплой на Railway (2026-02-26)
 - [ ] Voice messages: включить транскрипцию голосовых (см. Phase 4 в PLAN.md)
+- [x] Health check тул + heartbeat алерты в Slack при отключении сайдкаров (2026-02-26)
 - [ ] Задеплоить [Slack Activity Alerts](https://railway.com/deploy/E2MZIp) — трекинг сообщений в Slack
+- [ ] Добавить `WHATSAPP_SIDECAR_URL` в Railway env vars (gateway) для health check WhatsApp
 
 ## Files Structure
 ```

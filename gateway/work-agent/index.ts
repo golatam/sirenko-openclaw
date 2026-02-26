@@ -702,6 +702,119 @@ const WorkAgentPlugin = {
     });
 
     // -----------------------------------------------------------------------
+    // Health check — monitor sidecar connectivity
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_health_check",
+      label: "Health Check",
+      description:
+        "Check connectivity to all backend services (Google MCP sidecar, Telegram sidecar, WhatsApp sidecar). Returns status of each service. Use this to diagnose connection issues or during heartbeat to alert about outages.",
+      parameters: { type: "object", properties: {}, required: [] },
+      async execute() {
+        const HEALTH_TIMEOUT_MS = 10_000;
+        const results: Record<string, { status: string; details?: unknown; error?: string; latencyMs?: number }> = {};
+
+        // Google MCP sidecar
+        if (_mcpUrl) {
+          const t0 = Date.now();
+          try {
+            const res = await fetchWithTimeout(`${_mcpUrl}/mcp`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json, text/event-stream",
+              },
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: 1,
+                method: "initialize",
+                params: {
+                  protocolVersion: "2025-03-26",
+                  capabilities: {},
+                  clientInfo: { name: "health-check", version: "1.0.0" },
+                },
+              }),
+            }, HEALTH_TIMEOUT_MS);
+            results.google_mcp = {
+              status: res.ok ? "ok" : `http_${res.status}`,
+              latencyMs: Date.now() - t0,
+            };
+            // Consume body to avoid leaking
+            await res.text();
+          } catch (e) {
+            results.google_mcp = {
+              status: "down",
+              error: (e as Error).message,
+              latencyMs: Date.now() - t0,
+            };
+          }
+        } else {
+          results.google_mcp = { status: "not_configured" };
+        }
+
+        // Telegram sidecar
+        if (_tgSidecarUrl) {
+          const t0 = Date.now();
+          try {
+            const res = await fetchWithTimeout(`${_tgSidecarUrl}/health`, {
+              method: "GET",
+            }, HEALTH_TIMEOUT_MS);
+            const data = await res.json() as Record<string, unknown>;
+            results.telegram_sidecar = {
+              status: res.ok ? "ok" : `http_${res.status}`,
+              details: data,
+              latencyMs: Date.now() - t0,
+            };
+          } catch (e) {
+            results.telegram_sidecar = {
+              status: "down",
+              error: (e as Error).message,
+              latencyMs: Date.now() - t0,
+            };
+          }
+        } else {
+          results.telegram_sidecar = { status: "not_configured" };
+        }
+
+        // WhatsApp sidecar (shares base URL pattern with telegram sidecar on Railway)
+        const waUrl = process.env.WHATSAPP_SIDECAR_URL;
+        if (waUrl) {
+          const t0 = Date.now();
+          try {
+            const res = await fetchWithTimeout(`${waUrl}/health`, {
+              method: "GET",
+            }, HEALTH_TIMEOUT_MS);
+            const data = await res.json() as Record<string, unknown>;
+            results.whatsapp_sidecar = {
+              status: res.ok ? "ok" : `http_${res.status}`,
+              details: data,
+              latencyMs: Date.now() - t0,
+            };
+          } catch (e) {
+            results.whatsapp_sidecar = {
+              status: "down",
+              error: (e as Error).message,
+              latencyMs: Date.now() - t0,
+            };
+          }
+        } else {
+          results.whatsapp_sidecar = { status: "not_configured" };
+        }
+
+        // Overall status
+        const allOk = Object.values(results).every(
+          (r) => r.status === "ok" || r.status === "not_configured",
+        );
+
+        return ok(
+          { overall: allOk ? "healthy" : "degraded", services: results },
+          { healthy: allOk },
+        );
+      },
+    });
+
+    // -----------------------------------------------------------------------
     // Usage & cost tracking
     // -----------------------------------------------------------------------
 
