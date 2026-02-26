@@ -120,12 +120,27 @@ function extractText(msg) {
 }
 
 // ---------------------------------------------------------------------------
+// QR code text rendering (minimal, no extra deps)
+// ---------------------------------------------------------------------------
+
+function renderQrToLog(qrString) {
+  // Just log the raw string — user can paste into any QR generator
+  // For actual terminal QR, we'd need qrcode-terminal package
+  console.error("[WA] ──────────────────────────────────────");
+  console.error("[WA] Scan QR: paste this into https://qr.io or any QR decoder:");
+  console.error(`[WA] ${qrString}`);
+  console.error("[WA] Or GET /qr on the health endpoint");
+  console.error("[WA] ──────────────────────────────────────");
+}
+
+// ---------------------------------------------------------------------------
 // WhatsApp connection
 // ---------------------------------------------------------------------------
 
 let reconnectAttempts = 0;
 let isConnected = false;
 let messageCount = 0;
+let lastQr = null;
 
 async function startWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -138,7 +153,7 @@ async function startWhatsApp() {
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     logger,
-    printQRInTerminal: true,
+    // QR code handled via connection.update event below
     syncFullHistory: SYNC_HISTORY,
   });
 
@@ -149,7 +164,11 @@ async function startWhatsApp() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.error("[WA] QR code generated — scan with WhatsApp > Linked Devices");
+      lastQr = qr;
+      console.error("[WA] QR code generated — GET /qr to see it, or scan this string:");
+      console.error(`[WA] QR raw: ${qr}`);
+      // Generate text-based QR in logs
+      renderQrToLog(qr);
     }
 
     if (connection === "open") {
@@ -240,11 +259,26 @@ const server = createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({
-        status: isConnected ? "ok" : "disconnected",
+        status: isConnected ? "ok" : lastQr ? "awaiting_qr" : "disconnected",
         account: ACCOUNT_LABEL,
         messages_ingested: messageCount,
       }),
     );
+    return;
+  }
+  if (req.method === "GET" && req.url === "/qr") {
+    if (isConnected) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "connected", qr: null }));
+      return;
+    }
+    if (lastQr) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "awaiting_qr", qr: lastQr }));
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "no_qr", qr: null }));
     return;
   }
   res.writeHead(404);
