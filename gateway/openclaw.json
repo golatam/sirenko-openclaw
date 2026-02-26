@@ -31,7 +31,7 @@
   },
   "plugins": {
     "enabled": true,
-    "allow": ["work-agent", "telegram", "memory-core"],
+    "allow": ["work-agent", "telegram", "memory-core", "diagnostics-otel"],
     "slots": {
       "memory": "memory-core"
     },
@@ -51,7 +51,23 @@
       },
       "memory-core": {
         "enabled": true
+      },
+      "diagnostics-otel": {
+        "enabled": true
       }
+    }
+  },
+  "diagnostics": {
+    "enabled": true,
+    "otel": {
+      "enabled": true,
+      "endpoint": "${OTEL_ENDPOINT}",
+      "headers": {
+        "Authorization": "Basic ${OTEL_AUTH_TOKEN}"
+      },
+      "serviceName": "openclaw-work-agent",
+      "traces": true,
+      "metrics": true
     }
   }
 }

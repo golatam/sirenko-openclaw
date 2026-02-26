@@ -18,7 +18,7 @@ See: `ARCHITECTURE.md`
 ## Current Services (Railway)
 Project: `openclaw-work-agent`
 Services:
-- `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core)
+- `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core + diagnostics-otel)
 - `google-mcp-sidecar` (FastMCP, 7 тулов, мультиаккаунт)
 - `telegram-sidecar` (Telethon MTProto ingestion + HTTP search API)
 - `Postgres`
@@ -66,6 +66,13 @@ Gateway domain:
 - Плагин вызывает сайдкар через `fetchWithTimeout()` (аналог google-mcp-sidecar)
 - 4300+ сообщений в базе, 3 аккаунта (TG1/TG2/TG3 StringSessions)
 - `TELEGRAM_SIDECAR_URL` в gateway env vars → приватная сеть Railway
+
+### Observability
+- `diagnostics-otel` плагин включён — метрики, трейсы в Grafana Cloud
+- OTLP/HTTP → Grafana Cloud (eu-west-2), free tier
+- Метрики: token usage, cost USD, run latency, queue depth, session state
+- Трейсы: spans на каждый LLM-вызов, webhook, message processing
+- Env vars: `OTEL_ENDPOINT`, `OTEL_AUTH_TOKEN` (Basic auth, instance 1539542)
 
 ### Агент (Сирен)
 - Персона: IDENTITY.md (стиль, тон), USER.md (предпочтения, аккаунты)

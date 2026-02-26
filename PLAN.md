@@ -71,8 +71,8 @@
 
 ### Проактивность
 - [x] Heartbeat — запущен по умолчанию
-- [ ] Создать `HEARTBEAT.md` в workspace — стоячие инструкции для heartbeat (проверка срочной почты, уведомления)
-- [ ] Включить cron: `"cron": { "enabled": true }` в `openclaw.json`
+- [x] `HEARTBEAT.md` в workspace — проверка срочной почты, напоминания о встречах (seed-only)
+- [x] Cron включён: `"cron": { "enabled": true }` в `openclaw.json`
 - [ ] Настроить cron-задачи: утренний брифинг, еженедельный отчёт
 
 ### Плагины (встроенные OpenClaw)
@@ -83,7 +83,7 @@
 - `memory-core` — файловая память (MEMORY.md + daily logs)
 
 **Рекомендуется добавить:**
-- [ ] `diagnostics-otel` — метрики, трейсы, стоимость токенов (zero-dependency observability)
+- [x] `diagnostics-otel` — метрики, трейсы, стоимость токенов → Grafana Cloud (2026-02-26)
 
 **Рассмотреть позже:**
 - `memory-lancedb` — замена memory-core, семантический поиск (нужен OpenAI key)
@@ -107,7 +107,7 @@
 
 ### Важные (улучшают надёжность)
 - [ ] Реструктурировать репо: `services/` + `plugins/` вместо плоской структуры
-- [ ] Реализовать Telegram search — REST API на telegram-sidecar с PostgreSQL full-text
+- [x] Telegram search — REST API на telegram-sidecar с PostgreSQL full-text (2026-02-26)
 - [ ] Добавить health check endpoints на оба сайдкара
 - [ ] Создать `docker-compose.yml` для локальной разработки (3 сервиса + Postgres)
 
