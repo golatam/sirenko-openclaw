@@ -83,7 +83,7 @@
 - `memory-core` — файловая память (MEMORY.md + daily logs)
 
 **Рекомендуется добавить:**
-- [x] `diagnostics-otel` — метрики, трейсы, стоимость токенов → Grafana Cloud (2026-02-26)
+- [x] `work_usage_summary` тул — токены и стоимость из session transcripts (вместо diagnostics-otel) (2026-02-26)
 
 **Рассмотреть позже:**
 - `memory-lancedb` — замена memory-core, семантический поиск (нужен OpenAI key)

@@ -628,6 +628,59 @@ const WorkAgentPlugin = {
     });
 
     // -----------------------------------------------------------------------
+    // Usage & cost tracking
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_usage_summary",
+      label: "Usage Summary",
+      description:
+        "Get token usage and cost summary. Returns daily breakdown with input/output tokens and estimated cost in USD.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          days: {
+            type: "number",
+            description: "Number of days to include (default 7)",
+          },
+        },
+        required: [],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        const days = (param(params, "days") as number) || 7;
+        try {
+          // Dynamic import of internal OpenClaw module (version pinned to 2026.2.23)
+          const openclawMain = require.resolve("openclaw");
+          const modulePath = openclawMain.replace(
+            /dist[/\\]index\.(js|ts)$/,
+            "dist/plugin-sdk/infra/session-cost-usage.js",
+          );
+          const { loadCostUsageSummary } = await import(modulePath);
+          const summary = await loadCostUsageSummary({ days });
+          return ok({
+            period: `last ${days} days`,
+            totals: {
+              tokens: summary.totals.totalTokens,
+              input: summary.totals.input,
+              output: summary.totals.output,
+              cacheRead: summary.totals.cacheRead,
+              costUsd: Math.round(summary.totals.totalCost * 10000) / 10000,
+            },
+            daily: summary.daily.map((d: Record<string, unknown>) => ({
+              date: d.date,
+              tokens: d.totalTokens,
+              costUsd: Math.round((d.totalCost as number) * 10000) / 10000,
+            })),
+          });
+        } catch (e) {
+          return err(`Usage data unavailable: ${(e as Error).message}`);
+        }
+      },
+    });
+
+    // -----------------------------------------------------------------------
     // Aggregation tools
     // -----------------------------------------------------------------------
 

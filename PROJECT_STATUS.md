@@ -18,7 +18,7 @@ See: `ARCHITECTURE.md`
 ## Current Services (Railway)
 Project: `openclaw-work-agent`
 Services:
-- `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core + diagnostics-otel)
+- `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core)
 - `google-mcp-sidecar` (FastMCP, 7 тулов, мультиаккаунт)
 - `telegram-sidecar` (Telethon MTProto ingestion + HTTP search API)
 - `Postgres`
@@ -51,7 +51,7 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 10 тулов
+- `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 11 тулов
 - 30s AbortController таймаут на все fetch-вызовы
 - `extractParams()` helper: извлекает params из `execute(toolUseId, params, context, callback)` (OpenClaw передаёт 4 аргумента, не 1)
 - `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
@@ -68,11 +68,10 @@ Gateway domain:
 - `TELEGRAM_SIDECAR_URL` в gateway env vars → приватная сеть Railway
 
 ### Observability
-- `diagnostics-otel` плагин включён — метрики, трейсы в Grafana Cloud
-- OTLP/HTTP → Grafana Cloud (eu-west-2), free tier
-- Метрики: token usage, cost USD, run latency, queue depth, session state
-- Трейсы: spans на каждый LLM-вызов, webhook, message processing
-- Env vars: `OTEL_ENDPOINT`, `OTEL_AUTH_TOKEN` (Basic auth, instance 1539542)
+- `work_usage_summary` тул в плагине — токены и стоимость из session transcripts
+- Агент может сам проверять расход и отправлять отчёт в Telegram
+- Данные: daily breakdown (tokens, cost USD), per-model usage
+- Используется `loadCostUsageSummary()` из OpenClaw Plugin SDK (internal module, version pinned)
 
 ### Агент (Сирен)
 - Персона: IDENTITY.md (стиль, тон), USER.md (предпочтения, аккаунты)

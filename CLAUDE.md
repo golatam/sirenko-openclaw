@@ -32,7 +32,7 @@ Runtime-файлы (`MEMORY.md`, `memory/*.md`, `cron/jobs.json`) создают
 
 ## Плагины
 
-Включены: `work-agent` (кастомный), `telegram` (канал), `memory-core` (память), `diagnostics-otel` (OTEL → Grafana Cloud).
+Включены: `work-agent` (кастомный), `telegram` (канал), `memory-core` (память).
 Cron-подсистема включена. Heartbeat работает по умолчанию.
 
 ## Разработка
