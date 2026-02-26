@@ -10,9 +10,9 @@
         "type": "string",
         "description": "URL of google-mcp-sidecar (e.g. http://google-mcp-sidecar.railway.internal:8000)"
       },
-      "dbUrl": {
+      "telegramSidecarUrl": {
         "type": "string",
-        "description": "PostgreSQL connection string for Telegram message index"
+        "description": "URL of telegram-sidecar HTTP API (e.g. http://telegram-sidecar.railway.internal:8000)"
       }
     }
   },
@@ -21,9 +21,9 @@
       "label": "Google MCP Server URL",
       "help": "HTTP endpoint of the google-mcp-sidecar service"
     },
-    "dbUrl": {
-      "label": "Postgres URL",
-      "help": "Connection string for Telegram message index (shared with telegram-sidecar)"
+    "telegramSidecarUrl": {
+      "label": "Telegram Sidecar URL",
+      "help": "HTTP endpoint of the telegram-sidecar search API"
     }
   }
 }

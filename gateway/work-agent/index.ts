@@ -7,7 +7,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 const MCP_TIMEOUT_MS = 30_000;
 
 let _mcpUrl: string | undefined;
-let _dbUrl: string | undefined;
+let _tgSidecarUrl: string | undefined;
 let _mcpSessionId: string | undefined;
 let _mcpInitPromise: Promise<void> | undefined;
 
@@ -132,26 +132,37 @@ async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Postgres helper — simple query via pg wire protocol isn't practical here,
-// so we use a tiny HTTP wrapper. For MVP, we inline a fetch to a pg-rest
-// endpoint or fall back to "not configured" when dbUrl is absent.
-//
-// Since the gateway runs Node.js without a pg driver, Telegram message search
-// returns a "db not configured" stub when dbUrl is not set. In production
-// the gateway will have DATABASE_URL and we can swap in a proper pg client.
+// Telegram sidecar HTTP client — queries messages via telegram-sidecar's
+// /search endpoint (PostgreSQL full-text search under the hood).
 // ---------------------------------------------------------------------------
 
 async function queryTelegramMessages(
   query: string,
   opts: { from?: string; to?: string; limit?: number } = {},
-): Promise<{ rows: unknown[]; source: string }> {
-  if (!_dbUrl) return { rows: [], source: "telegram (db not configured)" };
+): Promise<{ rows: unknown[]; total: number; source: string }> {
+  if (!_tgSidecarUrl) return { rows: [], total: 0, source: "telegram (sidecar not configured)" };
 
-  // We rely on the sidecar's Postgres being accessible. Since Node.js 22
-  // doesn't bundle a pg driver and the plugin can't install npm deps,
-  // we use a lightweight approach: if DATABASE_URL looks like a postgres://
-  // URL, we note it for future use. For now, return empty.
-  return { rows: [], source: "telegram (pg driver pending)" };
+  const body: Record<string, unknown> = { query };
+  if (opts.from) body.from = opts.from;
+  if (opts.to) body.to = opts.to;
+  if (opts.limit) body.limit = opts.limit;
+
+  const res = await fetchWithTimeout(`${_tgSidecarUrl}/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Telegram search HTTP ${res.status}: ${await res.text()}`);
+  }
+
+  const data = (await res.json()) as { messages?: unknown[]; total?: number };
+  return {
+    rows: data.messages || [],
+    total: data.total || 0,
+    source: "telegram",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -221,9 +232,10 @@ const WorkAgentPlugin = {
         description:
           "URL of google-mcp-sidecar (e.g. http://google-mcp-sidecar.railway.internal:8000)",
       },
-      dbUrl: {
+      telegramSidecarUrl: {
         type: "string",
-        description: "PostgreSQL connection string for Telegram message index",
+        description:
+          "URL of telegram-sidecar HTTP API (e.g. http://telegram-sidecar.railway.internal:8000)",
       },
     },
   },
@@ -232,7 +244,8 @@ const WorkAgentPlugin = {
     const config = (api as unknown as { config: Record<string, string> })
       .config ?? {};
     _mcpUrl = config.mcpServerUrl || process.env.GOOGLE_MCP_URL;
-    _dbUrl = config.dbUrl || process.env.DATABASE_URL;
+    _tgSidecarUrl = config.telegramSidecarUrl || process.env.TELEGRAM_SIDECAR_URL;
+    console.error(`[work-agent] mcpUrl=${_mcpUrl} tgSidecarUrl=${_tgSidecarUrl}`);
 
     // -----------------------------------------------------------------------
     // Gmail tools

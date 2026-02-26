@@ -1,6 +1,6 @@
 # Project Status — OpenClaw Work Agent
 
-Date: 2026-02-25
+Date: 2026-02-26
 
 ## Goal
 Build a focused agent using OpenClaw for:
@@ -20,7 +20,7 @@ Project: `openclaw-work-agent`
 Services:
 - `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core)
 - `google-mcp-sidecar` (FastMCP, 7 тулов, мультиаккаунт)
-- `telegram-sidecar` (Telethon MTProto ingestion)
+- `telegram-sidecar` (Telethon MTProto ingestion + HTTP search API)
 - `Postgres`
 - `Redis`
 
@@ -60,8 +60,12 @@ Gateway domain:
 
 ### Telegram
 - Telegram bot channel включён и отвечает
-- `telegram-sidecar`: Telethon, multi-account, Postgres ingest
-- TG1/TG2/TG3 StringSessions в Railway vars
+- `telegram-sidecar`: Telethon multi-account ingestion + aiohttp HTTP search API
+- `POST /search` — full-text поиск по PostgreSQL (GIN индекс, `plainto_tsquery`)
+- `GET /health` — health check
+- Плагин вызывает сайдкар через `fetchWithTimeout()` (аналог google-mcp-sidecar)
+- 4300+ сообщений в базе, 3 аккаунта (TG1/TG2/TG3 StringSessions)
+- `TELEGRAM_SIDECAR_URL` в gateway env vars → приватная сеть Railway
 
 ### Агент (Сирен)
 - Персона: IDENTITY.md (стиль, тон), USER.md (предпочтения, аккаунты)
@@ -74,9 +78,9 @@ Gateway domain:
 - [x] Проверить end-to-end: отправка письма, создание события (2026-02-25)
 - [x] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway (2026-02-25)
 - [ ] Настроить cron-задачи: утренний брифинг, еженедельный отчёт
-- [ ] Verify `telegram-sidecar` running and ingesting messages
+- [x] Verify `telegram-sidecar` running and ingesting messages (2026-02-26, 4179+ msgs)
 - [ ] WhatsApp channel login for Gateway
-- [ ] Telegram search — REST API на sidecar с PostgreSQL full-text
+- [x] Telegram search — REST API на sidecar с PostgreSQL full-text (2026-02-26)
 
 ## Files Structure
 ```
@@ -95,9 +99,9 @@ google-mcp-sidecar/
   Dockerfile
   gen_token.py           — скрипт генерации OAuth refresh token
 telegram-sidecar/
-  main.py                — Telethon MTProto ingestion
+  main.py                — Telethon ingestion + aiohttp search API (~340 строк)
   schema.sql             — PostgreSQL schema
-  requirements.txt
+  requirements.txt       — telethon, asyncpg, aiohttp
 ```
 
 ## Notes

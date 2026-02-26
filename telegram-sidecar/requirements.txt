@@ -1,3 +1,4 @@
 telethon==1.38.0
 asyncpg==0.29.0
 python-dotenv==1.0.1
+aiohttp~=3.11.0

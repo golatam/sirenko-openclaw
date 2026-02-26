@@ -45,7 +45,8 @@
       "work-agent": {
         "enabled": true,
         "config": {
-          "mcpServerUrl": "${GOOGLE_MCP_URL}"
+          "mcpServerUrl": "${GOOGLE_MCP_URL}",
+          "telegramSidecarUrl": "${TELEGRAM_SIDECAR_URL}"
         }
       },
       "memory-core": {

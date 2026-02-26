@@ -1,11 +1,13 @@
 import asyncio
 import json
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
 import asyncpg
+from aiohttp import web
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -167,6 +169,116 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
     await client.run_until_disconnected()
 
 
+## ---------------------------------------------------------------------------
+## HTTP search API (aiohttp)
+## ---------------------------------------------------------------------------
+
+SEARCH_SQL = """
+SELECT id, account_label, thread_id, sender_id, sender_name,
+       text, ts, metadata_json
+FROM messages
+WHERE source = 'telegram'
+  AND ($1::text = '' OR plainto_tsquery('simple', $1)::text = ''
+       OR to_tsvector('simple', coalesce(text, '')) @@ plainto_tsquery('simple', $1))
+  AND ($2::text IS NULL OR account_label = $2)
+  AND ($3::text IS NULL OR thread_id = $3)
+  AND ($4::timestamptz IS NULL OR ts >= $4)
+  AND ($5::timestamptz IS NULL OR ts <= $5)
+ORDER BY ts DESC
+LIMIT $6 OFFSET $7
+"""
+
+COUNT_SQL = """
+SELECT COUNT(*) FROM messages
+WHERE source = 'telegram'
+  AND ($1::text = '' OR plainto_tsquery('simple', $1)::text = ''
+       OR to_tsvector('simple', coalesce(text, '')) @@ plainto_tsquery('simple', $1))
+  AND ($2::text IS NULL OR account_label = $2)
+  AND ($3::text IS NULL OR thread_id = $3)
+  AND ($4::timestamptz IS NULL OR ts >= $4)
+  AND ($5::timestamptz IS NULL OR ts <= $5)
+"""
+
+
+def _clamp(val: Optional[int], lo: int, hi: int, default: int) -> int:
+    if val is None:
+        return default
+    return max(lo, min(hi, val))
+
+
+async def handle_search(request: web.Request) -> web.Response:
+    pool: asyncpg.Pool = request.app["pool"]
+    try:
+        body = await request.json()
+    except Exception as e:
+        print(f"[SEARCH] invalid JSON: {e}", flush=True, file=sys.stderr)
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+
+    query = body.get("query", "")
+    account = body.get("account") or None
+    thread_id = body.get("thread_id") or None
+    from_ts = body.get("from") or None
+    to_ts = body.get("to") or None
+    limit = _clamp(body.get("limit"), 1, 100, 20)
+    offset = _clamp(body.get("offset"), 0, 10000, 0)
+
+    print(f"[SEARCH] query={query!r} account={account} thread={thread_id} from={from_ts} to={to_ts} limit={limit}", flush=True, file=sys.stderr)
+
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                SEARCH_SQL, query, account, thread_id, from_ts, to_ts, limit, offset
+            )
+            total_row = await conn.fetchval(
+                COUNT_SQL, query, account, thread_id, from_ts, to_ts
+            )
+    except Exception as e:
+        print(f"[SEARCH] DB error: {e}", flush=True, file=sys.stderr)
+        return web.json_response({"error": f"db error: {e}"}, status=500)
+
+    messages = []
+    for r in rows:
+        messages.append({
+            "id": r["id"],
+            "account_label": r["account_label"],
+            "thread_id": r["thread_id"],
+            "sender_id": r["sender_id"],
+            "sender_name": r["sender_name"],
+            "text": r["text"],
+            "ts": r["ts"].isoformat() if r["ts"] else None,
+            "metadata": r["metadata_json"] if isinstance(r["metadata_json"], dict) else json.loads(r["metadata_json"] or "{}"),
+        })
+
+    print(f"[SEARCH] found {len(messages)}/{total_row or 0} results", flush=True, file=sys.stderr)
+
+    return web.json_response({
+        "messages": messages,
+        "total": total_row or 0,
+        "query": query,
+        "source": "telegram",
+    })
+
+
+async def handle_health(request: web.Request) -> web.Response:
+    return web.json_response({
+        "status": "ok",
+        "accounts": request.app.get("account_count", 0),
+    })
+
+
+def create_search_app(pool: asyncpg.Pool, account_count: int) -> web.Application:
+    app = web.Application()
+    app["pool"] = pool
+    app["account_count"] = account_count
+    app.router.add_post("/search", handle_search)
+    app.router.add_get("/health", handle_health)
+    return app
+
+
+## ---------------------------------------------------------------------------
+## Main
+## ---------------------------------------------------------------------------
+
 async def main() -> None:
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
@@ -211,6 +323,18 @@ async def main() -> None:
             CREATE INDEX IF NOT EXISTS messages_text_idx ON messages USING GIN (to_tsvector('simple', coalesce(text, '')));
             """
         )
+
+    # Start HTTP search API
+    http_port = int(os.getenv("HTTP_PORT", os.getenv("PORT", "8000")))
+    search_app = create_search_app(pool, len(accounts))
+    runner = web.AppRunner(search_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", http_port)
+    await site.start()
+    print(f"[HTTP] Search API listening on port {http_port}", flush=True, file=sys.stderr)
+
+    # Start Telethon clients
+    print(f"[TG] Starting {len(accounts)} account(s)...", flush=True, file=sys.stderr)
     tasks = [
         asyncio.create_task(run_account(pool, account, sync_history_on_start, per_chat))
         for account in accounts
