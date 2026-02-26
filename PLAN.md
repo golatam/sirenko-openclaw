@@ -11,7 +11,7 @@
 - [x] Confirm `telegram-sidecar` is running
 - [x] Verify ingestion in Postgres (4300+ msgs)
 - [x] WhatsApp sidecar: Baileys ingestion → PostgreSQL (source-agnostic search)
-- [ ] WhatsApp: QR-паринг + первый запуск на Railway
+- [x] WhatsApp: QR-паринг + первый запуск на Railway (2026-02-26, +34698992000)
 
 ## Phase 3 — Gmail/GCal/Drive Integration (Done)
 - [x] Создан google-mcp-sidecar (workspace-mcp, Dockerfile, порт 8000)

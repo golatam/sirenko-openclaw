@@ -68,6 +68,15 @@ Gateway domain:
 - 4300+ сообщений в базе, 3 аккаунта (TG1/TG2/TG3 StringSessions)
 - `TELEGRAM_SIDECAR_URL` в gateway env vars → приватная сеть Railway
 
+### WhatsApp
+- `whatsapp-sidecar`: Node.js + @whiskeysockets/baileys (WhatsApp Web эмуляция)
+- Ingestion в PostgreSQL (`source='whatsapp'`), та же таблица `messages`
+- Поиск через telegram-sidecar (source-agnostic, параметр `source`)
+- QR-паринг: `/qr` endpoint + raw строка в логах
+- Auth state на volume `/data/auth_state/`
+- 1 аккаунт: +34698992000 (wa1)
+- Домен: `https://whatsapp-sidecar-production-93a3.up.railway.app`
+
 ### Observability
 - `work_usage_summary` тул в плагине — токены и стоимость из session transcripts
 - Агент может сам проверять расход и отправлять отчёт в Telegram
@@ -87,7 +96,7 @@ Gateway domain:
 - [ ] Настроить cron-задачи: утренний брифинг, еженедельный отчёт
 - [x] Verify `telegram-sidecar` running and ingesting messages (2026-02-26, 4179+ msgs)
 - [x] Telegram search — REST API на sidecar с PostgreSQL full-text (2026-02-26)
-- [ ] WhatsApp sidecar: QR-паринг + первый запуск на Railway
+- [x] WhatsApp sidecar: Baileys ingestion, QR-паринг, деплой на Railway (2026-02-26)
 
 ## Files Structure
 ```
@@ -95,7 +104,7 @@ gateway/
   openclaw.json          — конфиг Gateway (agents, cron, channels, plugins)
   Dockerfile             — Node.js 22 + OpenClaw
   entrypoint.sh          — auth, workspace sync, session cleanup
-  work-agent/            — кастомный плагин (10 тулов)
+  work-agent/            — кастомный плагин (11 тулов)
   workspace/
     IDENTITY.md          — персона агента (always-overwrite)
     USER.md              — данные пользователя (always-overwrite)
@@ -117,5 +126,7 @@ whatsapp-sidecar/
 
 ## Notes
 - Telegram uses MTProto user accounts via sidecar
+- WhatsApp uses Baileys (WhatsApp Web emulation) via sidecar, QR pairing
+- WhatsApp sidecar domain: `https://whatsapp-sidecar-production-93a3.up.railway.app`
 - StringSession approach chosen for Railway (no console)
 - Sensitive secrets stored only in Railway variables, never committed
