@@ -643,6 +643,39 @@ const WorkAgentPlugin = {
     });
 
     // -----------------------------------------------------------------------
+    // Context / introspection
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_get_channel_info",
+      label: "Get Channel Info",
+      description:
+        "Returns current conversation context: channel name, channel ID, source (slack/telegram/dm), user info. Call this to know where you are.",
+      parameters: { type: "object", properties: {}, required: [] },
+      async execute(...rawArgs: unknown[]) {
+        const context = rawArgs[2] as Record<string, unknown> | undefined;
+        console.error("[work_get_channel_info] context:", JSON.stringify(context, null, 2));
+
+        if (!context) return ok({ warning: "No context available" });
+
+        const info: Record<string, unknown> = {};
+        for (const key of [
+          "channel", "channelId", "channelName", "channelType",
+          "conversation", "source", "user", "userId", "userName",
+          "threadId", "messageId", "sessionId",
+        ]) {
+          if (context[key] !== undefined) info[key] = context[key];
+        }
+        // If no known keys matched — return entire context for diagnostics
+        if (Object.keys(info).length === 0) {
+          info._raw = context;
+          info._keys = Object.keys(context);
+        }
+        return ok(info);
+      },
+    });
+
+    // -----------------------------------------------------------------------
     // Usage & cost tracking
     // -----------------------------------------------------------------------
 

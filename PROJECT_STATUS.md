@@ -52,7 +52,8 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 11 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage)
+- `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 12 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info)
+- `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
 - 30s AbortController таймаут на все fetch-вызовы
 - `extractParams()` helper: извлекает params из `execute(toolUseId, params, context, callback)` (OpenClaw передаёт 4 аргумента, не 1)
 - `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
@@ -91,8 +92,10 @@ Gateway domain:
 - `nativeStreaming: true` — ответы печатаются в реальном времени
 - Токены: `SLACK_APP_TOKEN` (xapp-...) + `SLACK_BOT_TOKEN` (xoxb-...) в Railway env vars
 
-### Агент (Сирен)
-- Персона: IDENTITY.md (стиль, тон), USER.md (предпочтения, аккаунты)
+### Агент (Клавито / Clavito)
+- Персона: IDENTITY.md (мотиватор, без лести, краткость), USER.md (предпочтения, аккаунты)
+- Память по каналам: 1 Slack-канал = 1 папка в workspace (автосоздание при первом сообщении)
+- `work_get_channel_info` тул для определения текущего канала
 - `memory-core` плагин включён — persistent memory (MEMORY.md + daily logs)
 - `HEARTBEAT.md` — стоячие инструкции (проверка срочной почты, напоминания о встречах)
 - Heartbeat запущен по умолчанию (~30 мин)
@@ -113,7 +116,7 @@ gateway/
   openclaw.json          — конфиг Gateway (agents, cron, channels, plugins)
   Dockerfile             — Node.js 22 + OpenClaw
   entrypoint.sh          — auth, workspace sync, session cleanup
-  work-agent/            — кастомный плагин (11 тулов)
+  work-agent/            — кастомный плагин (12 тулов)
   workspace/
     IDENTITY.md          — персона агента (always-overwrite)
     USER.md              — данные пользователя (always-overwrite)
