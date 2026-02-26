@@ -174,29 +174,29 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
 ## ---------------------------------------------------------------------------
 
 SEARCH_SQL = """
-SELECT id, account_label, thread_id, sender_id, sender_name,
+SELECT id, source, account_label, thread_id, sender_id, sender_name,
        text, ts, metadata_json
 FROM messages
-WHERE source = 'telegram'
-  AND ($1::text = '' OR plainto_tsquery('simple', $1)::text = ''
-       OR to_tsvector('simple', coalesce(text, '')) @@ plainto_tsquery('simple', $1))
-  AND ($2::text IS NULL OR account_label = $2)
-  AND ($3::text IS NULL OR thread_id = $3)
-  AND ($4::timestamptz IS NULL OR ts >= $4)
-  AND ($5::timestamptz IS NULL OR ts <= $5)
+WHERE ($1::text IS NULL OR source = $1)
+  AND ($2::text = '' OR plainto_tsquery('simple', $2)::text = ''
+       OR to_tsvector('simple', coalesce(text, '')) @@ plainto_tsquery('simple', $2))
+  AND ($3::text IS NULL OR account_label = $3)
+  AND ($4::text IS NULL OR thread_id = $4)
+  AND ($5::timestamptz IS NULL OR ts >= $5)
+  AND ($6::timestamptz IS NULL OR ts <= $6)
 ORDER BY ts DESC
-LIMIT $6 OFFSET $7
+LIMIT $7 OFFSET $8
 """
 
 COUNT_SQL = """
 SELECT COUNT(*) FROM messages
-WHERE source = 'telegram'
-  AND ($1::text = '' OR plainto_tsquery('simple', $1)::text = ''
-       OR to_tsvector('simple', coalesce(text, '')) @@ plainto_tsquery('simple', $1))
-  AND ($2::text IS NULL OR account_label = $2)
-  AND ($3::text IS NULL OR thread_id = $3)
-  AND ($4::timestamptz IS NULL OR ts >= $4)
-  AND ($5::timestamptz IS NULL OR ts <= $5)
+WHERE ($1::text IS NULL OR source = $1)
+  AND ($2::text = '' OR plainto_tsquery('simple', $2)::text = ''
+       OR to_tsvector('simple', coalesce(text, '')) @@ plainto_tsquery('simple', $2))
+  AND ($3::text IS NULL OR account_label = $3)
+  AND ($4::text IS NULL OR thread_id = $4)
+  AND ($5::timestamptz IS NULL OR ts >= $5)
+  AND ($6::timestamptz IS NULL OR ts <= $6)
 """
 
 
@@ -214,6 +214,7 @@ async def handle_search(request: web.Request) -> web.Response:
         print(f"[SEARCH] invalid JSON: {e}", flush=True, file=sys.stderr)
         return web.json_response({"error": "invalid JSON body"}, status=400)
 
+    source = body.get("source") or None  # None = all sources
     query = body.get("query", "")
     account = body.get("account") or None
     thread_id = body.get("thread_id") or None
@@ -222,15 +223,15 @@ async def handle_search(request: web.Request) -> web.Response:
     limit = _clamp(body.get("limit"), 1, 100, 20)
     offset = _clamp(body.get("offset"), 0, 10000, 0)
 
-    print(f"[SEARCH] query={query!r} account={account} thread={thread_id} from={from_ts} to={to_ts} limit={limit}", flush=True, file=sys.stderr)
+    print(f"[SEARCH] source={source} query={query!r} account={account} thread={thread_id} from={from_ts} to={to_ts} limit={limit}", flush=True, file=sys.stderr)
 
     try:
         async with pool.acquire() as conn:
             rows = await conn.fetch(
-                SEARCH_SQL, query, account, thread_id, from_ts, to_ts, limit, offset
+                SEARCH_SQL, source, query, account, thread_id, from_ts, to_ts, limit, offset
             )
             total_row = await conn.fetchval(
-                COUNT_SQL, query, account, thread_id, from_ts, to_ts
+                COUNT_SQL, source, query, account, thread_id, from_ts, to_ts
             )
     except Exception as e:
         print(f"[SEARCH] DB error: {e}", flush=True, file=sys.stderr)
@@ -240,6 +241,7 @@ async def handle_search(request: web.Request) -> web.Response:
     for r in rows:
         messages.append({
             "id": r["id"],
+            "source": r["source"],
             "account_label": r["account_label"],
             "thread_id": r["thread_id"],
             "sender_id": r["sender_id"],
@@ -255,7 +257,7 @@ async def handle_search(request: web.Request) -> web.Response:
         "messages": messages,
         "total": total_row or 0,
         "query": query,
-        "source": "telegram",
+        "source": source or "all",
     })
 
 

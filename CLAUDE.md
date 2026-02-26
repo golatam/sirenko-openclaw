@@ -14,13 +14,15 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 1. **OpenClaw Gateway** (`gateway/`) — Node.js 22, OpenClaw v2026.2.23 (глобально). Загружает плагин `work-agent` по пути. HTTP API + Telegram бот-канал. Конфиг: `gateway/openclaw.json`. Персона агента: `gateway/workspace/IDENTITY.md` и `gateway/workspace/USER.md`. Heartbeat: `gateway/workspace/HEARTBEAT.md`.
 
-2. **Telegram Sidecar** (`telegram-sidecar/`) — Python 3.11 asyncio, Telethon (MTProto). Логинится в 3 пользовательских аккаунта через StringSession, пишет сообщения в PostgreSQL. Точка входа: `main.py`.
+2. **Telegram Sidecar** (`telegram-sidecar/`) — Python 3.11 asyncio, Telethon (MTProto). Логинится в 3 пользовательских аккаунта через StringSession, пишет сообщения в PostgreSQL. HTTP search API (source-agnostic: ищет и Telegram, и WhatsApp). Точка входа: `main.py`.
+
+5. **WhatsApp Sidecar** (`whatsapp-sidecar/`) — Node.js 22, @whiskeysockets/baileys. Подключается к WhatsApp через QR-код (Linked Devices), пишет сообщения в ту же таблицу `messages` (`source='whatsapp'`). Только ingestion, поиск через telegram-sidecar. Точка входа: `main.js`.
 
 3. **Google MCP Sidecar** (`google-mcp-sidecar/`) — Python 3.12, FastMCP + google-api-python-client. Gmail, Calendar, Drive через MCP (JSON-RPC 2.0, Streamable HTTP). Мультиаккаунт через `GOOGLE_WORKSPACE_ACCOUNTS` JSON. Порт 8000. Зависимости: `requirements.txt`.
 
 4. **PostgreSQL** — общий на Railway. Схема в `telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
 
-Плагин (`gateway/work-agent/index.ts`) регистрирует 10 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
+Плагин (`gateway/work-agent/index.ts`) регистрирует 11 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
 
 ## Persistent Storage
 

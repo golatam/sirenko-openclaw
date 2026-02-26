@@ -21,6 +21,7 @@ Services:
 - `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core)
 - `google-mcp-sidecar` (FastMCP, 7 тулов, мультиаккаунт)
 - `telegram-sidecar` (Telethon MTProto ingestion + HTTP search API)
+- `whatsapp-sidecar` (Baileys ingestion → PostgreSQL, source-agnostic search через telegram-sidecar)
 - `Postgres`
 - `Redis`
 
@@ -51,7 +52,7 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 11 тулов
+- `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 11 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage)
 - 30s AbortController таймаут на все fetch-вызовы
 - `extractParams()` helper: извлекает params из `execute(toolUseId, params, context, callback)` (OpenClaw передаёт 4 аргумента, не 1)
 - `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
@@ -85,8 +86,8 @@ Gateway domain:
 - [x] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway (2026-02-25)
 - [ ] Настроить cron-задачи: утренний брифинг, еженедельный отчёт
 - [x] Verify `telegram-sidecar` running and ingesting messages (2026-02-26, 4179+ msgs)
-- [ ] WhatsApp channel login for Gateway
 - [x] Telegram search — REST API на sidecar с PostgreSQL full-text (2026-02-26)
+- [ ] WhatsApp sidecar: QR-паринг + первый запуск на Railway
 
 ## Files Structure
 ```
@@ -105,9 +106,13 @@ google-mcp-sidecar/
   Dockerfile
   gen_token.py           — скрипт генерации OAuth refresh token
 telegram-sidecar/
-  main.py                — Telethon ingestion + aiohttp search API (~340 строк)
+  main.py                — Telethon ingestion + aiohttp search API (source-agnostic)
   schema.sql             — PostgreSQL schema
   requirements.txt       — telethon, asyncpg, aiohttp
+whatsapp-sidecar/
+  main.js                — Baileys ingestion + HTTP health (~200 строк)
+  package.json           — @whiskeysockets/baileys, pg, pino
+  Dockerfile
 ```
 
 ## Notes

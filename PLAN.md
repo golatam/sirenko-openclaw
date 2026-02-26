@@ -7,10 +7,11 @@
 - Create Railway project, services, Postgres, Redis
 - Deploy Gateway + sidecar
 
-## Phase 2 — Messaging Ingest (In Progress)
-- Confirm `telegram-sidecar` is running
-- Verify ingestion in Postgres
-- Connect WhatsApp to Gateway
+## Phase 2 — Messaging Ingest (Done)
+- [x] Confirm `telegram-sidecar` is running
+- [x] Verify ingestion in Postgres (4300+ msgs)
+- [x] WhatsApp sidecar: Baileys ingestion → PostgreSQL (source-agnostic search)
+- [ ] WhatsApp: QR-паринг + первый запуск на Railway
 
 ## Phase 3 — Gmail/GCal/Drive Integration (Done)
 - [x] Создан google-mcp-sidecar (workspace-mcp, Dockerfile, порт 8000)

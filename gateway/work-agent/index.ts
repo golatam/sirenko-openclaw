@@ -136,13 +136,14 @@ async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
 // /search endpoint (PostgreSQL full-text search under the hood).
 // ---------------------------------------------------------------------------
 
-async function queryTelegramMessages(
+async function queryMessages(
   query: string,
-  opts: { from?: string; to?: string; limit?: number } = {},
+  opts: { source?: string; from?: string; to?: string; limit?: number } = {},
 ): Promise<{ rows: unknown[]; total: number; source: string }> {
-  if (!_tgSidecarUrl) return { rows: [], total: 0, source: "telegram (sidecar not configured)" };
+  if (!_tgSidecarUrl) return { rows: [], total: 0, source: "messaging (sidecar not configured)" };
 
   const body: Record<string, unknown> = { query };
+  if (opts.source) body.source = opts.source;
   if (opts.from) body.from = opts.from;
   if (opts.to) body.to = opts.to;
   if (opts.limit) body.limit = opts.limit;
@@ -255,7 +256,7 @@ const WorkAgentPlugin = {
       name: "work_search_messages",
       label: "Search Messages",
       description:
-        "Search messages across Gmail and Telegram. Returns combined results.",
+        "Search messages across Gmail, Telegram, and WhatsApp. Returns combined results.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -267,7 +268,7 @@ const WorkAgentPlugin = {
           },
           channel: {
             type: "string",
-            description: "Filter by channel: gmail, telegram, or all (default: all)",
+            description: "Filter by channel: gmail, telegram, whatsapp, or all (default: all)",
           },
           from: { type: "string", description: "Start date (ISO 8601)" },
           to: { type: "string", description: "End date (ISO 8601)" },
@@ -283,7 +284,7 @@ const WorkAgentPlugin = {
         const from = param(params, "from") as string | undefined;
         const to = param(params, "to") as string | undefined;
         const limit = (param(params, "limit") as number) || 20;
-        const results: { gmail?: unknown; telegram?: unknown } = {};
+        const results: { gmail?: unknown; telegram?: unknown; whatsapp?: unknown } = {};
 
         // Gmail search
         if (channel === "all" || channel === "gmail") {
@@ -311,14 +312,28 @@ const WorkAgentPlugin = {
         // Telegram search
         if (channel === "all" || channel === "telegram") {
           try {
-            const tg = await queryTelegramMessages(query, {
+            results.telegram = await queryMessages(query, {
+              source: "telegram",
               from,
               to,
               limit,
             });
-            results.telegram = tg;
           } catch (e) {
             results.telegram = { error: (e as Error).message };
+          }
+        }
+
+        // WhatsApp search
+        if (channel === "all" || channel === "whatsapp") {
+          try {
+            results.whatsapp = await queryMessages(query, {
+              source: "whatsapp",
+              from,
+              to,
+              limit,
+            });
+          } catch (e) {
+            results.whatsapp = { error: (e as Error).message };
           }
         }
 
@@ -732,7 +747,7 @@ const WorkAgentPlugin = {
 
         // Telegram
         try {
-          data.telegram = await queryTelegramMessages(project, {
+          data.telegram = await queryMessages(project, {
             from,
             to,
             limit: 50,
@@ -819,7 +834,7 @@ const WorkAgentPlugin = {
           }
 
           try {
-            projectData.telegram = await queryTelegramMessages(project, {
+            projectData.telegram = await queryMessages(project, {
               from: weekStart,
               to: weekEnd,
               limit: 50,
