@@ -27,6 +27,16 @@
       "groups": {
         "*": { "requireMention": true }
       }
+    },
+    "slack": {
+      "enabled": true,
+      "mode": "socket",
+      "appToken": "${SLACK_APP_TOKEN}",
+      "botToken": "${SLACK_BOT_TOKEN}",
+      "dmPolicy": "open",
+      "allowFrom": ["*"],
+      "streaming": "partial",
+      "nativeStreaming": true
     }
   },
   "plugins": {
