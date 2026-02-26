@@ -36,6 +36,9 @@
       "dmPolicy": "open",
       "allowFrom": ["*"],
       "groupPolicy": "open",
+      "channels": {
+        "*": { "requireMention": false }
+      },
       "streaming": "partial",
       "nativeStreaming": true
     }

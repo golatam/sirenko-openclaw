@@ -86,7 +86,8 @@ Gateway domain:
 ### Slack
 - Slack канал — built-in в OpenClaw (не плагин), Socket Mode (WebSocket)
 - `dmPolicy: "open"` — DM доступен всем
-- `groupPolicy: "open"` — бот отвечает в каналах (mention-gated по умолчанию: нужен @mention или реплай в треде)
+- `groupPolicy: "open"` — бот отвечает в каналах
+- `channels: { "*": { requireMention: false } }` — отвечает на все сообщения без @mention
 - `nativeStreaming: true` — ответы печатаются в реальном времени
 - Токены: `SLACK_APP_TOKEN` (xapp-...) + `SLACK_BOT_TOKEN` (xoxb-...) в Railway env vars
 
