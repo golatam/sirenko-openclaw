@@ -130,9 +130,9 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 }
 ```
 
-- [ ] Добавить `tools.media.audio` в `gateway/openclaw.json` (Groq provider)
-- [ ] Получить `GROQ_API_KEY` на groq.com и добавить в Railway env vars (сервис gateway)
-- [ ] Задеплоить gateway
+- [x] Добавить `tools.media.audio` в `gateway/openclaw.json` (Groq provider) (2026-02-27)
+- [x] Получить `GROQ_API_KEY` на groq.com и добавить в Railway env vars (сервис gateway) (2026-02-27)
+- [x] Задеплоить gateway (2026-02-27)
 - [ ] Тест: отправить голосовое боту в Telegram
 
 ### 4b — Ingestion: голосовые в мониторимых чатах (вторично)
