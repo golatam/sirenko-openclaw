@@ -109,7 +109,7 @@ Gateway domain:
 - [x] Telegram search — REST API на sidecar с PostgreSQL full-text (2026-02-26)
 - [x] WhatsApp sidecar: Baileys ingestion, QR-паринг, деплой на Railway (2026-02-26)
 - [ ] Voice messages: включить транскрипцию голосовых (см. Phase 4 в PLAN.md)
-- [ ] Задеплоить [Slack Activity Alerts](https://railway.com/deploy/E2MZIp) — трекинг сообщений в Slack
+- [ ] Настроить Railway Webhooks → Slack (нативная интеграция, см. Phase 4.5 в PLAN.md)
 
 ## Files Structure
 ```

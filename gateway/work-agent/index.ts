@@ -10,6 +10,7 @@ const FETCH_RETRY_BASE_MS = 1_000; // 1s, 2s, 4s
 
 let _mcpUrl: string | undefined;
 let _tgSidecarUrl: string | undefined;
+let _tavilyApiKey: string | undefined;
 let _mcpSessionId: string | undefined;
 let _mcpInitPromise: Promise<void> | undefined;
 
@@ -157,6 +158,34 @@ async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Tavily web search — lightweight REST API client
+// ---------------------------------------------------------------------------
+
+async function tavilySearch(
+  query: string,
+  opts: { maxResults?: number; searchDepth?: string; includeAnswer?: boolean } = {},
+): Promise<unknown> {
+  if (!_tavilyApiKey) throw new Error("TAVILY_API_KEY is not configured");
+
+  const res = await fetchWithTimeout("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_key: _tavilyApiKey,
+      query,
+      max_results: opts.maxResults ?? 5,
+      search_depth: opts.searchDepth ?? "basic",
+      include_answer: opts.includeAnswer ?? true,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Tavily HTTP ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
 // Telegram sidecar HTTP client — queries messages via telegram-sidecar's
 // /search endpoint (PostgreSQL full-text search under the hood).
 // ---------------------------------------------------------------------------
@@ -190,6 +219,26 @@ async function queryMessages(
     total: data.total || 0,
     source: opts.source || "all",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Slack Web API — direct calls for Block Kit interactive messages
+// ---------------------------------------------------------------------------
+
+async function slackApi(method: string, body: Record<string, unknown>) {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) throw new Error("SLACK_BOT_TOKEN not available to plugin");
+  const res = await fetchWithTimeout(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json()) as { ok: boolean; error?: string; ts?: string; channel?: string };
+  if (!data.ok) throw new Error(`Slack ${method}: ${data.error}`);
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +297,7 @@ function err(message: string) {
 const WorkAgentPlugin = {
   id: "work-agent",
   name: "Work Agent",
-  description: "Gmail/Calendar/Drive/Telegram — search, send, schedule, report.",
+  description: "Gmail/Calendar/Drive/Telegram/Slack — search, send, schedule, report, interactive UI.",
   kind: "tools",
   configSchema: {
     type: "object",
@@ -272,7 +321,8 @@ const WorkAgentPlugin = {
       .config ?? {};
     _mcpUrl = config.mcpServerUrl || process.env.GOOGLE_MCP_URL;
     _tgSidecarUrl = config.telegramSidecarUrl || process.env.TELEGRAM_SIDECAR_URL;
-    console.error(`[work-agent] mcpUrl=${_mcpUrl} tgSidecarUrl=${_tgSidecarUrl}`);
+    _tavilyApiKey = config.tavilyApiKey || process.env.TAVILY_API_KEY;
+    console.error(`[work-agent] mcpUrl=${_mcpUrl} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"}`);
 
     // -----------------------------------------------------------------------
     // Gmail tools
@@ -669,6 +719,51 @@ const WorkAgentPlugin = {
     });
 
     // -----------------------------------------------------------------------
+    // Web search (Tavily)
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_web_search",
+      label: "Web Search",
+      description:
+        "Search the web using Tavily. Returns relevant results with snippets and an AI-generated answer summary.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          query: { type: "string", description: "Search query" },
+          max_results: {
+            type: "number",
+            description: "Max results to return (default 5, max 20)",
+          },
+          search_depth: {
+            type: "string",
+            description: "Search depth: 'basic' (fast) or 'advanced' (thorough, uses more credits). Default: basic",
+          },
+        },
+        required: ["query"],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        try {
+          const query = param(params, "query") as string;
+          if (!query) return err("query is required");
+          const maxResults = Math.min((param(params, "max_results") as number) || 5, 20);
+          const searchDepth = (param(params, "search_depth") as string) || "basic";
+
+          const result = await tavilySearch(query, {
+            maxResults,
+            searchDepth,
+            includeAnswer: true,
+          });
+          return ok(result);
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    // -----------------------------------------------------------------------
     // Context / introspection
     // -----------------------------------------------------------------------
 
@@ -750,6 +845,107 @@ const WorkAgentPlugin = {
           });
         } catch (e) {
           return err(`Usage data unavailable: ${(e as Error).message}`);
+        }
+      },
+    });
+
+    // -----------------------------------------------------------------------
+    // Slack interactive (Block Kit)
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_slack_interactive",
+      label: "Send Interactive Message",
+      description:
+        "Send a Slack message with Block Kit interactive elements (buttons, selects, checkboxes). " +
+        "Use for confirmations, choices, and checklists. " +
+        "All action_id values MUST start with 'openclaw:' prefix for callback routing. " +
+        "Returns message ts needed for work_slack_update.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          channel: {
+            type: "string",
+            description: "Slack channel ID (get from work_get_channel_info)",
+          },
+          blocks: {
+            type: "array",
+            description: "Slack Block Kit blocks array (JSON). All action_id must start with 'openclaw:'",
+          },
+          text: {
+            type: "string",
+            description: "Fallback text for notifications (shown in mobile push, etc.)",
+          },
+          thread_ts: {
+            type: "string",
+            description: "Thread timestamp to reply in thread (optional)",
+          },
+        },
+        required: ["channel", "blocks", "text"],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        try {
+          const channel = param(params, "channel") as string;
+          const blocks = param(params, "blocks") as unknown[];
+          const text = param(params, "text") as string;
+          const threadTs = param(params, "thread_ts") as string | undefined;
+          if (!channel) return err("channel is required");
+          if (!blocks || !Array.isArray(blocks)) return err("blocks must be an array");
+          if (!text) return err("text (fallback) is required");
+
+          const body: Record<string, unknown> = { channel, blocks, text };
+          if (threadTs) body.thread_ts = threadTs;
+          const result = await slackApi("chat.postMessage", body);
+          return ok({ sent: true, ts: result.ts, channel: result.channel });
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "work_slack_update",
+      label: "Update Slack Message",
+      description:
+        "Update an existing Slack message (e.g. replace buttons with result after user clicks). " +
+        "Use after receiving a Slack interaction callback to remove buttons and show outcome.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          channel: { type: "string", description: "Slack channel ID" },
+          ts: {
+            type: "string",
+            description: "Message timestamp to update (from work_slack_interactive result or interaction payload)",
+          },
+          blocks: {
+            type: "array",
+            description: "New Block Kit blocks (replaces old blocks)",
+          },
+          text: {
+            type: "string",
+            description: "New fallback text",
+          },
+        },
+        required: ["channel", "ts", "text"],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        try {
+          const channel = param(params, "channel") as string;
+          const ts = param(params, "ts") as string;
+          const text = param(params, "text") as string;
+          const blocks = param(params, "blocks") as unknown[] | undefined;
+          if (!channel || !ts) return err("channel and ts are required");
+
+          const body: Record<string, unknown> = { channel, ts, text };
+          if (blocks && Array.isArray(blocks)) body.blocks = blocks;
+          const result = await slackApi("chat.update", body);
+          return ok({ updated: true, ts: result.ts, channel: result.channel });
+        } catch (e) {
+          return err((e as Error).message);
         }
       },
     });

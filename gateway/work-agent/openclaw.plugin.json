@@ -1,7 +1,7 @@
 {
   "id": "work-agent",
   "name": "Work Agent",
-  "description": "Gmail/Calendar/Drive/Telegram — search, send, schedule, report.",
+  "description": "Gmail/Calendar/Drive/Telegram/Slack — search, send, schedule, report, interactive UI.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -13,6 +13,10 @@
       "telegramSidecarUrl": {
         "type": "string",
         "description": "URL of telegram-sidecar HTTP API (e.g. http://telegram-sidecar.railway.internal:8000)"
+      },
+      "tavilyApiKey": {
+        "type": "string",
+        "description": "Tavily API key for web search (falls back to TAVILY_API_KEY env var)"
       }
     }
   },
@@ -24,6 +28,10 @@
     "telegramSidecarUrl": {
       "label": "Telegram Sidecar URL",
       "help": "HTTP endpoint of the telegram-sidecar search API"
+    },
+    "tavilyApiKey": {
+      "label": "Tavily API Key",
+      "help": "API key from app.tavily.com for web search"
     }
   }
 }

@@ -45,3 +45,62 @@ workspace/
 - Ссылки из README.md ведут на допфайлы в той же папке
 - MEMORY.md — глобальный индекс со ссылками на папки проектов
 - Для DM (личных сообщений) используй папку `personal/`
+
+# Интерактивные элементы Slack (Block Kit)
+
+Когда нужно подтверждение, выбор или чеклист — используй `work_slack_interactive` вместо текстовых вопросов.
+
+## Когда использовать
+- **Подтверждение** перед write-операциями: отправка email, создание встречи, любое необратимое действие
+- **Выбор** из нескольких вариантов: аккаунт, приоритет, дата
+- **Чеклист** для списка задач или опций
+
+## Правила
+1. Все `action_id` ДОЛЖНЫ начинаться с `openclaw:` (иначе callback не дойдёт)
+2. Контекст для callback кодируй в `value` кнопки (JSON строка с деталями действия)
+3. Получи `channel` через `work_get_channel_info` → `channelId`
+4. После нажатия кнопки (получишь "Slack interaction: {...}") — обработай действие и обнови сообщение через `work_slack_update` (убери кнопки, покажи результат)
+
+## Пример: подтверждение email
+
+```json
+{
+  "channel": "C0123456789",
+  "text": "Подтверди отправку письма",
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Отправить письмо?*\nКому: user@example.com\nТема: Встреча завтра"
+      }
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "action_id": "openclaw:confirm_email",
+          "text": { "type": "plain_text", "text": "Отправить" },
+          "value": "{\"action\":\"send\",\"to\":\"user@example.com\",\"subject\":\"Встреча завтра\"}",
+          "style": "primary"
+        },
+        {
+          "type": "button",
+          "action_id": "openclaw:cancel_email",
+          "text": { "type": "plain_text", "text": "Отмена" },
+          "value": "{\"action\":\"cancel\"}",
+          "style": "danger"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Обработка callback
+Когда пользователь нажмёт кнопку, ты получишь системное сообщение вида:
+```
+Slack interaction: {"interactionType":"block_action","actionId":"openclaw:confirm_email","actionType":"button","value":"{...}","userId":"U...","channelId":"C...","messageTs":"1234567890.000000"}
+```
+Действуй по `actionId` и `value`. После обработки обнови сообщение через `work_slack_update` с `ts` из `messageTs`.

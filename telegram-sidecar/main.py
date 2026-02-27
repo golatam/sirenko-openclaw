@@ -134,7 +134,12 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
         session_name = os.path.join(session_dir, session_name)
     session = StringSession(account.session) if account.session else session_name
     client = TelegramClient(session, account.api_id, account.api_hash)
-    await client.start(phone=account.phone)
+    try:
+        await client.start(phone=account.phone)
+    except Exception as e:
+        print(f"[TG] FAILED to start {account.label} ({account.phone}): {e}", flush=True, file=sys.stderr)
+        return
+    print(f"[TG] {account.label} connected", flush=True, file=sys.stderr)
     await ensure_account_row(pool, account)
 
     if account.session is None and os.getenv("PRINT_SESSION_STRING", "0") == "1":
@@ -335,13 +340,13 @@ async def main() -> None:
     await site.start()
     print(f"[HTTP] Search API listening on port {http_port}", flush=True, file=sys.stderr)
 
-    # Start Telethon clients
+    # Start Telethon clients (fire-and-forget — each runs independently)
     print(f"[TG] Starting {len(accounts)} account(s)...", flush=True, file=sys.stderr)
-    tasks = [
+    for account in accounts:
         asyncio.create_task(run_account(pool, account, sync_history_on_start, per_chat))
-        for account in accounts
-    ]
-    await asyncio.gather(*tasks)
+
+    # Keep process alive for HTTP search API
+    await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
