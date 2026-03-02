@@ -1,0 +1,136 @@
+# docker-compose.yml — Local development environment
+# Usage:
+#   1. Copy .env.example to .env and fill in secrets
+#   2. docker compose up --build
+#
+# Note: Gateway requires openclaw globally installed in its image.
+# First run will take a few minutes to build all images.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: openclaw
+      POSTGRES_PASSWORD: openclaw
+      POSTGRES_DB: openclaw
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./telegram-sidecar/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openclaw"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  google-mcp-sidecar:
+    build:
+      context: .
+      dockerfile: google-mcp-sidecar/Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      PORT: "8000"
+      GOOGLE_WORKSPACE_CLIENT_ID: ${GOOGLE_WORKSPACE_CLIENT_ID}
+      GOOGLE_WORKSPACE_CLIENT_SECRET: ${GOOGLE_WORKSPACE_CLIENT_SECRET}
+      GOOGLE_WORKSPACE_ACCOUNTS: ${GOOGLE_WORKSPACE_ACCOUNTS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  telegram-sidecar:
+    build:
+      context: ./telegram-sidecar
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      PORT: "8000"
+      DATABASE_URL: postgres://openclaw:openclaw@postgres:5432/openclaw
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      SYNC_HISTORY_ON_START: "0"
+      HISTORY_PER_CHAT: "50"
+      LOG_LEVEL: info
+      TG_SESSION_DIR: /data
+      TG1_API_ID: ${TG1_API_ID}
+      TG1_API_HASH: ${TG1_API_HASH}
+      TG1_PHONE: ${TG1_PHONE}
+      TG1_SESSION: ${TG1_SESSION}
+      TG2_API_ID: ${TG2_API_ID}
+      TG2_API_HASH: ${TG2_API_HASH}
+      TG2_PHONE: ${TG2_PHONE}
+      TG2_SESSION: ${TG2_SESSION}
+      TG3_API_ID: ${TG3_API_ID}
+      TG3_API_HASH: ${TG3_API_HASH}
+      TG3_PHONE: ${TG3_PHONE}
+      TG3_SESSION: ${TG3_SESSION}
+    volumes:
+      - telegram-sessions:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  whatsapp-sidecar:
+    build:
+      context: ./whatsapp-sidecar
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8000"
+    environment:
+      PORT: "8000"
+      DATABASE_URL: postgres://openclaw:openclaw@postgres:5432/openclaw
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      WA_AUTH_DIR: /data/auth_state
+      WA_ACCOUNT_LABEL: wa1
+      WA_SYNC_HISTORY: "0"
+      LOG_LEVEL: warn
+    volumes:
+      - whatsapp-auth:/data/auth_state
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "18789:18789"
+    environment:
+      PORT: "18789"
+      OPENCLAW_STATE_DIR: /data/openclaw-state
+      ANTHROPIC_OAUTH_TOKEN: ${ANTHROPIC_OAUTH_TOKEN}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
+      GOOGLE_MCP_URL: http://google-mcp-sidecar:8000
+      TELEGRAM_SIDECAR_URL: http://telegram-sidecar:8000
+    volumes:
+      - gateway-state:/data/openclaw-state
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      google-mcp-sidecar:
+        condition: service_started
+      telegram-sidecar:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  redis-data:
+  gateway-state:
+  telegram-sessions:
+  whatsapp-auth:

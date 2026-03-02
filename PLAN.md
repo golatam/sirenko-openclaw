@@ -144,7 +144,7 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [x] telegram-sidecar: детектить voice/audio, скачивать через Telethon `download_media()`, транскрибировать через Groq (2026-03-02)
 - [x] whatsapp-sidecar: детектить `audioMessage`, скачивать через Baileys `downloadContentFromMessage()`, транскрибировать через Groq (2026-03-02)
 - [x] metadata_json: добавить `media_type: "voice"`, `transcribed: true` / `transcription_failed: true` (2026-03-02)
-- [ ] Добавить `GROQ_API_KEY` в Railway env vars (оба сайдкара) — при деплое
+- [x] Добавить `GROQ_API_KEY` в Railway env vars (оба сайдкара) (2026-03-02)
 
 ## Phase 4.5 — Railway → Slack уведомления (Done)
 
@@ -168,7 +168,7 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [ ] Реструктурировать репо: `services/` + `plugins/` вместо плоской структуры
 - [x] Telegram search — REST API на telegram-sidecar с PostgreSQL full-text (2026-02-26)
 - [ ] Добавить health check endpoints на оба сайдкара
-- [ ] Создать `docker-compose.yml` для локальной разработки (3 сервиса + Postgres)
+- [x] Создать `docker-compose.yml` для локальной разработки (5 сервисов + Postgres + Redis) (2026-03-02)
 
 ### Желательные (масштабируемость)
 - [ ] Выделить MCP-клиент из `index.ts` в отдельный `mcp-client.ts`
