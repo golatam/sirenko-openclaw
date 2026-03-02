@@ -146,11 +146,9 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [ ] metadata_json: добавить `media_type: "voice"` (схема JSONB уже поддерживает)
 - [ ] Добавить `GROQ_API_KEY` в Railway env vars (оба сайдкара)
 
-## Phase 4.5 — Railway → Slack уведомления (Pending)
+## Phase 4.5 — Railway → Slack уведомления (Done)
 
-- [ ] Создать Slack Incoming Webhook (api.slack.com/apps → Incoming Webhooks → Add New)
-- [ ] Добавить webhook в Railway: Dashboard → Project Settings → Webhooks
-- [ ] Проверить: deploy, crash, resource alerts приходят в Slack
+- [x] Настроен Railway Webhook → Slack (deploy, crash, resource alerts)
 - ~~Slack Activity Alerts template~~ — заменено нативными Railway Webhooks (не нужен отдельный сервис)
 
 ## Phase 5 — Search & Reports (Pending)
