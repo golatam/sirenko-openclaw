@@ -74,7 +74,9 @@
 - [x] Heartbeat — запущен по умолчанию
 - [x] `HEARTBEAT.md` в workspace — проверка срочной почты, напоминания о встречах (seed-only)
 - [x] Cron включён: `"cron": { "enabled": true }` в `openclaw.json`
-- [ ] Настроить cron-задачи: утренний брифинг, еженедельный отчёт
+- [x] Настроить cron-задачи: утренний брифинг (9:00 Madrid, пн-пт) + еженедельный отчёт (пт 16:00 Madrid) (2026-03-02)
+- [x] `work_slack_send` тул — DM по email через Slack API (delivery для cron, минуя баги announce) (2026-03-02)
+- [x] `gateway/cron-seed.json` → seed-only copy в entrypoint → `cron/jobs.json` на volume (2026-03-02)
 
 ### Плагины (встроенные OpenClaw)
 

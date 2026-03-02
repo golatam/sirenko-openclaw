@@ -22,7 +22,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 4. **PostgreSQL** — общий на Railway. Схема в `telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
 
-Плагин (`gateway/work-agent/index.ts`) регистрирует 11 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
+Плагин (`gateway/work-agent/index.ts`) регистрирует 13 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
 
 ## Persistent Storage
 
@@ -30,12 +30,12 @@ Workspace агента живёт на Railway volume (`/data/openclaw-state/wor
 - **Always-overwrite**: `IDENTITY.md`, `USER.md` — source of truth в git, перезаписываются при деплое
 - **Seed-only**: `HEARTBEAT.md` — копируется из image только если отсутствует на volume, агент может менять в runtime
 
-Runtime-файлы (`MEMORY.md`, `memory/*.md`, `cron/jobs.json`) создаются агентом и переживают деплои.
+Runtime-файлы (`MEMORY.md`, `memory/*.md`, `cron/jobs.json`) переживают деплои. `cron/jobs.json` сидируется из `gateway/cron-seed.json` через entrypoint (seed-only: только если файл отсутствует на volume).
 
 ## Плагины
 
 Включены: `work-agent` (кастомный), `telegram` (канал), `memory-core` (память).
-Cron-подсистема включена. Heartbeat работает по умолчанию.
+Cron-подсистема включена: утренний брифинг (пн-пт 9:00 Madrid) + еженедельный отчёт (пт 16:00 Madrid). Heartbeat работает по умолчанию.
 
 ## Разработка
 

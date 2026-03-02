@@ -10,6 +10,7 @@ WORKDIR /app
 COPY openclaw.json /app/openclaw.json
 COPY work-agent /app/work-agent
 COPY workspace /app/workspace-image
+COPY cron-seed.json /app/cron-seed.json
 
 ENV OPENCLAW_CONFIG_PATH=/app/openclaw.json
 ENV NODE_ENV=production

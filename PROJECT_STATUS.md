@@ -52,8 +52,9 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 12 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info)
+- `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 13 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send)
 - `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
+- `work_slack_send` — отправка сообщений в Slack (DM по email или channel ID); используется cron-задачами
 - 30s AbortController таймаут на все fetch-вызовы
 - `extractParams()` helper: извлекает params из `execute(toolUseId, params, context, callback)` (OpenClaw передаёт 4 аргумента, не 1)
 - `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
@@ -99,12 +100,13 @@ Gateway domain:
 - `memory-core` плагин включён — persistent memory (MEMORY.md + daily logs)
 - `HEARTBEAT.md` — стоячие инструкции (проверка срочной почты, напоминания о встречах)
 - Heartbeat запущен по умолчанию (~30 мин)
-- Cron-подсистема включена (задачи пока не настроены)
+- Cron-подсистема включена, 2 задачи: утренний брифинг (пн-пт 9:00 Madrid) + еженедельный отчёт (пт 16:00 Madrid)
+- Cron seed: `gateway/cron-seed.json` → volume `cron/jobs.json` (seed-only через entrypoint)
 
 ## Pending
 - [x] Проверить end-to-end: отправка письма, создание события (2026-02-25)
 - [x] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway (2026-02-25)
-- [ ] Настроить cron-задачи: утренний брифинг, еженедельный отчёт
+- [x] Настроить cron-задачи: утренний брифинг (9:00 Madrid, пн-пт), еженедельный отчёт (пт 16:00 Madrid) — delivery через work_slack_send (2026-03-02)
 - [x] Verify `telegram-sidecar` running and ingesting messages (2026-02-26, 4179+ msgs)
 - [x] Telegram search — REST API на sidecar с PostgreSQL full-text (2026-02-26)
 - [x] WhatsApp sidecar: Baileys ingestion, QR-паринг, деплой на Railway (2026-02-26)
@@ -117,8 +119,9 @@ Gateway domain:
 gateway/
   openclaw.json          — конфиг Gateway (agents, cron, channels, plugins)
   Dockerfile             — Node.js 22 + OpenClaw
-  entrypoint.sh          — auth, workspace sync, session cleanup
-  work-agent/            — кастомный плагин (12 тулов)
+  entrypoint.sh          — auth, workspace sync, cron seed, session cleanup
+  cron-seed.json         — seed для cron/jobs.json (2 задачи: briefing + weekly report)
+  work-agent/            — кастомный плагин (13 тулов)
   workspace/
     IDENTITY.md          — персона агента (always-overwrite)
     USER.md              — данные пользователя (always-overwrite)

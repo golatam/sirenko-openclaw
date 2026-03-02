@@ -47,7 +47,6 @@
       "channels": {
         "*": { "requireMention": false }
       },
-      "streaming": "partial",
       "nativeStreaming": true
     }
   },

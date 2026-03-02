@@ -25,6 +25,13 @@ for f in HEARTBEAT.md; do
   fi
 done
 
+# --- Seed cron jobs ---
+mkdir -p "$STATE_DIR/cron"
+if [ ! -f "$STATE_DIR/cron/jobs.json" ]; then
+  cp /app/cron-seed.json "$STATE_DIR/cron/jobs.json"
+  echo "[entrypoint] Seeded cron/jobs.json"
+fi
+
 echo "[entrypoint] Workspace on persistent volume: $PERSIST_WORKSPACE"
 
 # Write OAuth auth profile from env var (Max subscription token)

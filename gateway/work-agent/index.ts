@@ -236,7 +236,7 @@ async function slackApi(method: string, body: Record<string, unknown>) {
     },
     body: JSON.stringify(body),
   });
-  const data = (await res.json()) as { ok: boolean; error?: string; ts?: string; channel?: string };
+  const data = (await res.json()) as Record<string, unknown>;
   if (!data.ok) throw new Error(`Slack ${method}: ${data.error}`);
   return data;
 }
@@ -944,6 +944,70 @@ const WorkAgentPlugin = {
           if (blocks && Array.isArray(blocks)) body.blocks = blocks;
           const result = await slackApi("chat.update", body);
           return ok({ updated: true, ts: result.ts, channel: result.channel });
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    // -----------------------------------------------------------------------
+    // Slack send (DM by email or channel by ID)
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_slack_send",
+      label: "Send Slack Message",
+      description:
+        "Send a message to a Slack channel or DM. " +
+        "For DM: provide user_email — the tool will look up the Slack user and open a DM. " +
+        "For channel: provide channel (Slack channel ID). " +
+        "At least one of channel or user_email is required.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          channel: {
+            type: "string",
+            description: "Slack channel ID (e.g. C0123456789). Optional if user_email is provided.",
+          },
+          user_email: {
+            type: "string",
+            description: "Email address to send DM to (looks up Slack user). Optional if channel is provided.",
+          },
+          text: {
+            type: "string",
+            description: "Message text (Slack mrkdwn format)",
+          },
+        },
+        required: ["text"],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        try {
+          const text = param(params, "text") as string;
+          if (!text) return err("text is required");
+
+          let channel = param(params, "channel") as string | undefined;
+          const userEmail = param(params, "user_email") as string | undefined;
+
+          if (!channel && !userEmail) {
+            return err("Either channel or user_email is required");
+          }
+
+          // If user_email provided, look up Slack user and open DM
+          if (!channel && userEmail) {
+            const userRes = await slackApi("users.lookupByEmail", { email: userEmail });
+            const user = userRes.user as Record<string, unknown> | undefined;
+            if (!user?.id) return err(`Slack user not found for email: ${userEmail}`);
+
+            const convRes = await slackApi("conversations.open", { users: user.id as string });
+            const conv = convRes.channel as Record<string, unknown> | undefined;
+            if (!conv?.id) return err("Failed to open DM conversation");
+            channel = conv.id as string;
+          }
+
+          const result = await slackApi("chat.postMessage", { channel: channel!, text });
+          return ok({ sent: true, channel: result.channel, ts: result.ts });
         } catch (e) {
           return err((e as Error).message);
         }
