@@ -137,14 +137,14 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [x] Задеплоить gateway (2026-02-27)
 - [x] Тест: отправить голосовое боту в Telegram (2026-02-27) ✓
 
-### 4b — Ingestion: голосовые в мониторимых чатах (вторично)
+### 4b — Ingestion: голосовые в мониторимых чатах (Done, 2026-03-02)
 
 Сайдкары дропают voice-сообщения при ingestion (text=NULL). Для поиска по чужим голосовым нужна отдельная транскрипция в сайдкарах.
 
-- [ ] telegram-sidecar: детектить voice/audio, скачивать через Telethon `download_media()`, транскрибировать через Groq
-- [ ] whatsapp-sidecar: детектить `audioMessage`, скачивать через Baileys `downloadMediaMessage()`, транскрибировать через Groq
-- [ ] metadata_json: добавить `media_type: "voice"` (схема JSONB уже поддерживает)
-- [ ] Добавить `GROQ_API_KEY` в Railway env vars (оба сайдкара)
+- [x] telegram-sidecar: детектить voice/audio, скачивать через Telethon `download_media()`, транскрибировать через Groq (2026-03-02)
+- [x] whatsapp-sidecar: детектить `audioMessage`, скачивать через Baileys `downloadContentFromMessage()`, транскрибировать через Groq (2026-03-02)
+- [x] metadata_json: добавить `media_type: "voice"`, `transcribed: true` / `transcription_failed: true` (2026-03-02)
+- [ ] Добавить `GROQ_API_KEY` в Railway env vars (оба сайдкара) — при деплое
 
 ## Phase 4.5 — Railway → Slack уведомления (Done)
 

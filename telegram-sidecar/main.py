@@ -7,12 +7,20 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import asyncpg
-from aiohttp import web
+from aiohttp import web, ClientSession, ClientTimeout, FormData
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
 load_dotenv()
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+GROQ_MODEL = "whisper-large-v3"
+GROQ_TIMEOUT = ClientTimeout(total=30)
+
+if not GROQ_API_KEY:
+    print("[TG] WARNING: GROQ_API_KEY not set — voice will not be transcribed", flush=True, file=sys.stderr)
 
 @dataclass
 class AccountConfig:
@@ -98,6 +106,45 @@ async def insert_message(
         )
 
 
+def is_voice_message(message) -> bool:
+    """Check if a Telethon message is a voice note (not music/audio file)."""
+    from telethon.tl.types import MessageMediaDocument, DocumentAttributeAudio
+    media = message.media
+    if not isinstance(media, MessageMediaDocument) or not media.document:
+        return False
+    for attr in media.document.attributes:
+        if isinstance(attr, DocumentAttributeAudio) and attr.voice:
+            return True
+    return False
+
+
+async def transcribe_audio(audio_bytes: bytes) -> Optional[str]:
+    """Send audio bytes to Groq Whisper API, return transcript or None."""
+    if not GROQ_API_KEY:
+        return None
+    try:
+        form = FormData()
+        form.add_field("file", audio_bytes, filename="voice.ogg", content_type="audio/ogg")
+        form.add_field("model", GROQ_MODEL)
+        form.add_field("language", "ru")
+        async with ClientSession(timeout=GROQ_TIMEOUT) as session:
+            async with session.post(
+                GROQ_URL,
+                data=form,
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    print(f"[TG] Groq API error {resp.status}: {body}", flush=True, file=sys.stderr)
+                    return None
+                result = await resp.json()
+                text = result.get("text", "").strip()
+                return text if text else None
+    except Exception as e:
+        print(f"[TG] Transcription failed: {e}", flush=True, file=sys.stderr)
+        return None
+
+
 async def sync_history(client: TelegramClient, pool: asyncpg.Pool, account: AccountConfig, per_chat: int) -> None:
     async for dialog in client.iter_dialogs():
         try:
@@ -108,18 +155,36 @@ async def sync_history(client: TelegramClient, pool: asyncpg.Pool, account: Acco
                 sender_id = str(getattr(sender, "id", "")) if sender else None
                 sender_name = getattr(sender, "first_name", None) or getattr(sender, "title", None)
                 thread_id = str(getattr(dialog.entity, "id", ""))
+                text = msg.message
                 metadata = {
                     "chat_title": getattr(dialog.entity, "title", None),
                     "chat_username": getattr(dialog.entity, "username", None),
                     "message_id": msg.id,
                 }
+
+                if is_voice_message(msg):
+                    metadata["media_type"] = "voice"
+                    try:
+                        audio_bytes = await msg.download_media(file=bytes)
+                        if audio_bytes:
+                            transcript = await transcribe_audio(audio_bytes)
+                            if transcript:
+                                text = transcript
+                                metadata["transcribed"] = True
+                            else:
+                                metadata["transcription_failed"] = True
+                        else:
+                            metadata["transcription_failed"] = True
+                    except Exception:
+                        metadata["transcription_failed"] = True
+
                 await insert_message(
                     pool,
                     account.label,
                     thread_id,
                     sender_id,
                     sender_name,
-                    msg.message,
+                    text,
                     msg.date,
                     metadata,
                 )
@@ -155,18 +220,38 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
         sender_name = getattr(sender, "first_name", None) or getattr(sender, "title", None)
         chat = await event.get_chat()
         thread_id = str(getattr(chat, "id", "")) if chat else None
+        text = event.raw_text
         metadata = {
             "chat_title": getattr(chat, "title", None),
             "chat_username": getattr(chat, "username", None),
             "message_id": event.message.id,
         }
+
+        if is_voice_message(event.message):
+            metadata["media_type"] = "voice"
+            try:
+                audio_bytes = await event.message.download_media(file=bytes)
+                if audio_bytes:
+                    transcript = await transcribe_audio(audio_bytes)
+                    if transcript:
+                        text = transcript
+                        metadata["transcribed"] = True
+                        print(f"[TG] Transcribed voice ({len(audio_bytes)} bytes) → {len(transcript)} chars", flush=True, file=sys.stderr)
+                    else:
+                        metadata["transcription_failed"] = True
+                else:
+                    metadata["transcription_failed"] = True
+            except Exception as e:
+                print(f"[TG] Voice download failed: {e}", flush=True, file=sys.stderr)
+                metadata["transcription_failed"] = True
+
         await insert_message(
             pool,
             account.label,
             thread_id,
             sender_id,
             sender_name,
-            event.raw_text,
+            text,
             event.message.date or utc_now(),
             metadata,
         )

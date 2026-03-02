@@ -3,6 +3,7 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  downloadContentFromMessage,
 } from "@whiskeysockets/baileys";
 import pino from "pino";
 import pg from "pg";
@@ -25,6 +26,15 @@ const SKIP_FROM_ME = process.env.WA_SKIP_FROM_ME !== "0"; // skip own messages b
 const SYNC_HISTORY = process.env.WA_SYNC_HISTORY === "1"; // ingest history sync messages
 
 const logger = pino({ level: process.env.LOG_LEVEL || "warn" });
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
+const GROQ_MODEL = "whisper-large-v3";
+const GROQ_TIMEOUT_MS = 30_000;
+
+if (!GROQ_API_KEY) {
+  console.error("[WA] WARNING: GROQ_API_KEY not set — voice will not be transcribed");
+}
 
 // ---------------------------------------------------------------------------
 // PostgreSQL
@@ -76,7 +86,7 @@ async function ensureAccountRow(identity) {
 }
 
 async function insertMessage({ threadId, senderId, senderName, text, ts, metadata }) {
-  if (!text) return; // skip media-only / empty messages
+  if (!text && !metadata?.media_type) return; // skip media-only / empty (but keep voice)
   await pool.query(
     `INSERT INTO messages (source, account_label, thread_id, sender_id, sender_name, text, ts, metadata_json)
      VALUES ('whatsapp', $1, $2, $3, $4, $5, $6, $7)`,
@@ -117,6 +127,50 @@ function extractText(msg) {
     msg.message.buttonsResponseMessage?.selectedDisplayText ||
     null
   );
+}
+
+// ---------------------------------------------------------------------------
+// Voice transcription (Groq Whisper)
+// ---------------------------------------------------------------------------
+
+function isVoiceMessage(msg) {
+  return !!msg.message?.audioMessage;
+}
+
+async function transcribeAudio(msg) {
+  if (!GROQ_API_KEY) return null;
+  try {
+    const audioMsg = msg.message.audioMessage;
+    const stream = await downloadContentFromMessage(audioMsg, "audio");
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+
+    const form = new FormData();
+    form.append("file", new Blob([buffer], { type: "audio/ogg" }), "voice.ogg");
+    form.append("model", GROQ_MODEL);
+    form.append("language", "ru");
+
+    const resp = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+      body: form,
+      signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      console.error(`[WA] Groq API error ${resp.status}: ${body}`);
+      return null;
+    }
+
+    const result = await resp.json();
+    const text = (result.text || "").trim();
+    return text || null;
+  } catch (e) {
+    console.error(`[WA] Transcription failed: ${e.message}`);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -221,7 +275,7 @@ async function startWhatsApp() {
         const isGroup = remoteJid?.endsWith("@g.us") || false;
         const senderId = msg.key.participant || remoteJid;
         const senderName = msg.pushName || null;
-        const text = extractText(msg);
+        let text = extractText(msg);
         const timestamp = msg.messageTimestamp;
         const ts = new Date(Number(timestamp) * 1000);
 
@@ -230,17 +284,33 @@ async function startWhatsApp() {
           groupName = await getGroupName(sock, remoteJid);
         }
 
+        const metadata = {
+          message_id: msg.key.id,
+          is_group: isGroup,
+          group_name: groupName,
+        };
+
+        if (isVoiceMessage(msg)) {
+          metadata.media_type = "voice";
+          const transcript = await transcribeAudio(msg);
+          if (transcript) {
+            text = transcript;
+            metadata.transcribed = true;
+            console.error(`[WA] Transcribed voice → ${transcript.length} chars`);
+          } else {
+            metadata.transcription_failed = true;
+          }
+        }
+
+        if (!text && !metadata.media_type) continue; // skip non-voice empty
+
         await insertMessage({
           threadId: remoteJid,
           senderId,
           senderName,
           text,
           ts,
-          metadata: {
-            message_id: msg.key.id,
-            is_group: isGroup,
-            group_name: groupName,
-          },
+          metadata,
         });
         messageCount++;
       } catch (e) {

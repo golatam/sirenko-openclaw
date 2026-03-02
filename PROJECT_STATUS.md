@@ -111,7 +111,8 @@ Gateway domain:
 - [x] Telegram search — REST API на sidecar с PostgreSQL full-text (2026-02-26)
 - [x] WhatsApp sidecar: Baileys ingestion, QR-паринг, деплой на Railway (2026-02-26)
 - [x] Voice messages Phase 4a: Groq Whisper v3 в бот-канале (`tools.media.audio` + `GROQ_API_KEY`) (2026-02-27)
-- [ ] Voice messages Phase 4b: транскрипция голосовых в сайдкарах (см. PLAN.md)
+- [x] Voice messages Phase 4b: транскрипция голосовых в сайдкарах — Groq Whisper v3, metadata_json с media_type/transcribed (2026-03-02)
+- [ ] Добавить `GROQ_API_KEY` в Railway env vars для telegram-sidecar и whatsapp-sidecar (при деплое)
 - [ ] Настроить Railway Webhooks → Slack (нативная интеграция, см. Phase 4.5 в PLAN.md)
 
 ## Files Structure
