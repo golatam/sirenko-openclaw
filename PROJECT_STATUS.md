@@ -113,7 +113,7 @@ Gateway domain:
 - [x] Voice messages Phase 4a: Groq Whisper v3 в бот-канале (`tools.media.audio` + `GROQ_API_KEY`) (2026-02-27)
 - [x] Voice messages Phase 4b: транскрипция голосовых в сайдкарах — Groq Whisper v3, metadata_json с media_type/transcribed (2026-03-02)
 - [x] Добавить `GROQ_API_KEY` в Railway env vars для telegram-sidecar и whatsapp-sidecar (2026-03-02)
-- [ ] Настроить Railway Webhooks → Slack (нативная интеграция, см. Phase 4.5 в PLAN.md)
+- [x] Настроить Railway Webhooks → Slack (нативная интеграция, см. Phase 4.5 в PLAN.md) (2026-03-02)
 
 ## Files Structure
 ```

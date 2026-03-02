@@ -511,6 +511,25 @@ def _normalize_args_app(inner):
         if scope["type"] != "http":
             return await inner(scope, receive, send)
 
+        # Health check endpoint
+        path = scope.get("path", "")
+        if scope.get("method", "") == "GET" and path == "/health":
+            body = json.dumps({
+                "status": "ok",
+                "accounts": len(_accounts),
+                "accounts_list": list(_accounts.keys()),
+            }).encode("utf-8")
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    [b"content-type", b"application/json"],
+                    [b"content-length", str(len(body)).encode()],
+                ],
+            })
+            await send({"type": "http.response.body", "body": body})
+            return
+
         # Buffer full request body
         chunks = []
         while True:

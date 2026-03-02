@@ -167,7 +167,7 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 ### Важные (улучшают надёжность)
 - [ ] Реструктурировать репо: `services/` + `plugins/` вместо плоской структуры
 - [x] Telegram search — REST API на telegram-sidecar с PostgreSQL full-text (2026-02-26)
-- [ ] Добавить health check endpoints на оба сайдкара
+- [x] Добавить health check endpoints на оба сайдкара (2026-03-03)
 - [x] Создать `docker-compose.yml` для локальной разработки (5 сервисов + Postgres + Redis) (2026-03-02)
 
 ### Желательные (масштабируемость)
