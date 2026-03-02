@@ -297,7 +297,7 @@ function err(message: string) {
 const WorkAgentPlugin = {
   id: "work-agent",
   name: "Work Agent",
-  description: "Gmail/Calendar/Drive/Telegram/Slack — search, send, schedule, report, interactive UI.",
+  description: "Unified search across Gmail/Calendar/Drive/Telegram/WhatsApp — plus send, schedule, report, interactive UI.",
   kind: "tools",
   configSchema: {
     type: "object",
@@ -329,10 +329,11 @@ const WorkAgentPlugin = {
     // -----------------------------------------------------------------------
 
     api.registerTool({
-      name: "work_search_messages",
-      label: "Search Messages",
+      name: "work_search",
+      label: "Unified Search",
       description:
-        "Search messages across Gmail, Telegram, and WhatsApp. Returns combined results.",
+        "Search across Gmail, Telegram, WhatsApp, Google Drive, and Calendar. " +
+        "All sources are queried in parallel. Use `channel` to filter.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -344,11 +345,12 @@ const WorkAgentPlugin = {
           },
           channel: {
             type: "string",
-            description: "Filter by channel: gmail, telegram, whatsapp, or all (default: all)",
+            description:
+              "Filter by channel: gmail, telegram, whatsapp, drive, calendar, or all (default: all)",
           },
           from: { type: "string", description: "Start date (ISO 8601)" },
           to: { type: "string", description: "End date (ISO 8601)" },
-          limit: { type: "number", description: "Max results (default 20)" },
+          limit: { type: "number", description: "Max results per source (default 20)" },
         },
         required: ["query"],
       },
@@ -360,57 +362,76 @@ const WorkAgentPlugin = {
         const from = param(params, "from") as string | undefined;
         const to = param(params, "to") as string | undefined;
         const limit = (param(params, "limit") as number) || 20;
-        const results: { gmail?: unknown; telegram?: unknown; whatsapp?: unknown } = {};
+
+        const tasks: { key: string; promise: Promise<unknown> }[] = [];
 
         // Gmail search
         if (channel === "all" || channel === "gmail") {
-          try {
-            const gmailQuery = [
-              query,
-              from ? `after:${from}` : "",
-              to ? `before:${to}` : "",
-            ]
-              .filter(Boolean)
-              .join(" ");
-
-            const gmailArgs: Record<string, unknown> = {
-              query: gmailQuery,
-              max_results: limit,
-            };
-            if (account) gmailArgs.account = account;
-
-            results.gmail = await mcpCall("query_gmail_emails", gmailArgs);
-          } catch (e) {
-            results.gmail = { error: (e as Error).message };
-          }
+          const gmailQuery = [
+            query,
+            from ? `after:${from}` : "",
+            to ? `before:${to}` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          const gmailArgs: Record<string, unknown> = {
+            query: gmailQuery,
+            max_results: limit,
+          };
+          if (account) gmailArgs.account = account;
+          tasks.push({ key: "gmail", promise: mcpCall("query_gmail_emails", gmailArgs) });
         }
 
         // Telegram search
         if (channel === "all" || channel === "telegram") {
-          try {
-            results.telegram = await queryMessages(query, {
-              source: "telegram",
-              from,
-              to,
-              limit,
-            });
-          } catch (e) {
-            results.telegram = { error: (e as Error).message };
-          }
+          tasks.push({
+            key: "telegram",
+            promise: queryMessages(query, { source: "telegram", from, to, limit }),
+          });
         }
 
         // WhatsApp search
         if (channel === "all" || channel === "whatsapp") {
-          try {
-            results.whatsapp = await queryMessages(query, {
-              source: "whatsapp",
-              from,
-              to,
-              limit,
-            });
-          } catch (e) {
-            results.whatsapp = { error: (e as Error).message };
-          }
+          tasks.push({
+            key: "whatsapp",
+            promise: queryMessages(query, { source: "whatsapp", from, to, limit }),
+          });
+        }
+
+        // Drive search
+        if (channel === "all" || channel === "drive") {
+          const driveQuery = `fullText contains '${query.replace(/'/g, "\\'")}'`;
+          const driveArgs: Record<string, unknown> = {
+            query: driveQuery,
+            max_results: Math.min(limit, 10),
+          };
+          if (account) driveArgs.account = account;
+          tasks.push({ key: "drive", promise: mcpCall("drive_search_files", driveArgs) });
+        }
+
+        // Calendar search
+        if (channel === "all" || channel === "calendar") {
+          const calArgs: Record<string, unknown> = {
+            q: query,
+            calendar_id: "primary",
+            max_results: Math.min(limit, 20),
+          };
+          if (from) calArgs.time_min = from.includes("T") ? from : `${from}T00:00:00Z`;
+          if (to) calArgs.time_max = to.includes("T") ? to : `${to}T23:59:59Z`;
+          if (account) calArgs.account = account;
+          tasks.push({ key: "calendar", promise: mcpCall("calendar_get_events", calArgs) });
+        }
+
+        // Run all sources in parallel
+        const settled = await Promise.allSettled(tasks.map((t) => t.promise));
+
+        const results: Record<string, unknown> = {};
+        for (let i = 0; i < tasks.length; i++) {
+          const outcome = settled[i];
+          results[tasks[i].key] =
+            outcome.status === "fulfilled"
+              ? outcome.value
+              : { error: (outcome.reason as Error).message };
         }
 
         return ok(results, { channel });

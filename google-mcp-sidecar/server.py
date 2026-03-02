@@ -282,7 +282,8 @@ def gmail_send_email(to: str, subject: str, body: str,
 # ---------------------------------------------------------------------------
 
 def _calendar_events_single(account_key: str, calendar_id: str,
-                            time_min: str, time_max: str, max_results: int) -> list[dict]:
+                            time_min: str, time_max: str, max_results: int,
+                            q: str = "") -> list[dict]:
     """Get calendar events for a single account."""
     cal = _get_service(account_key, "calendar", "v3")
 
@@ -296,6 +297,8 @@ def _calendar_events_single(account_key: str, calendar_id: str,
         kwargs["timeMin"] = time_min
     if time_max:
         kwargs["timeMax"] = time_max
+    if q:
+        kwargs["q"] = q
 
     resp = cal.events().list(**kwargs).execute()
     results = []
@@ -318,7 +321,7 @@ def _calendar_events_single(account_key: str, calendar_id: str,
 @mcp.tool()
 def calendar_get_events(calendar_id: str = "primary", time_min: str = "",
                         time_max: str = "", max_results: int = 10,
-                        account: str = "") -> str:
+                        q: str = "", account: str = "") -> str:
     """List events from a Google Calendar.
 
     When account is empty, returns events from ALL connected accounts.
@@ -328,16 +331,17 @@ def calendar_get_events(calendar_id: str = "primary", time_min: str = "",
         time_min: Start time filter (RFC3339, e.g. 2026-02-25T00:00:00Z)
         time_max: End time filter (RFC3339)
         max_results: Maximum number of events (per account when searching all)
+        q: Free-text search (matches summary, description, location, attendees)
         account: Gmail account email. Empty = all accounts.
     """
     if account:
-        results = _calendar_events_single(account, calendar_id, time_min, time_max, max_results)
+        results = _calendar_events_single(account, calendar_id, time_min, time_max, max_results, q)
         return json.dumps({"events": results, "total": len(results)})
 
     all_results: list[dict] = []
     for acct in _accounts:
         try:
-            all_results.extend(_calendar_events_single(acct, calendar_id, time_min, time_max, max_results))
+            all_results.extend(_calendar_events_single(acct, calendar_id, time_min, time_max, max_results, q))
         except Exception as e:
             print(f"[CALENDAR] Error for {acct}: {e}", flush=True, file=sys.stderr)
 

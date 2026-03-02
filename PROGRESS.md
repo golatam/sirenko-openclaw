@@ -4,7 +4,7 @@
 - OpenClaw installed (v2026.2.22-2).
 - Local workspace created.
 - Work agent plugin scaffolded with tools:
-  - `work_search_messages`
+  - `work_search`
   - `work_summarize_project`
   - `work_send_email`
   - `work_schedule_meeting`
@@ -30,7 +30,7 @@
     - MCP-клиент на native fetch() (JSON-RPC 2.0)
     - 5 стабов заменены реальными вызовами MCP-сервера
     - 5 новых тулов: work_read_email, work_list_calendars, work_list_events, work_drive_search, work_drive_read
-    - work_search_messages объединяет Gmail + Telegram
+    - work_search объединяет Gmail + Telegram
     - work_weekly_report агрегирует Gmail + Calendar + Telegram
   - `openclaw.plugin.json` упрощён: mcpServerUrl + dbUrl
   - `gateway/openclaw.json` обновлён: передаёт GOOGLE_MCP_URL и DATABASE_URL

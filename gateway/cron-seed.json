@@ -10,7 +10,7 @@
     },
     "sessionTarget": "isolated",
     "delivery": { "mode": "none" },
-    "message": "Сейчас утро рабочего дня. Подготовь утренний брифинг для Кирилла.\n\n1. Проверь календарь на сегодня по всем 3 аккаунтам (kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online) — используй work_list_events с time_min=сегодня 00:00 и time_max=сегодня 23:59.\n2. Проверь непрочитанные важные письма за последние 12 часов по всем аккаунтам — используй work_search_messages с query=\"is:unread is:important\" channel=gmail.\n3. Загляни в свою память — есть ли задачи или напоминания на сегодня.\n\nСформируй краткий брифинг в формате:\n- Встречи сегодня (время, название, с кем)\n- Важные письма (от кого, тема, суть)\n- Задачи/напоминания\n\nОтправь брифинг через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\"). Используй Slack mrkdwn форматирование."
+    "message": "Сейчас утро рабочего дня. Подготовь утренний брифинг для Кирилла.\n\n1. Проверь календарь на сегодня по всем 3 аккаунтам (kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online) — используй work_list_events с time_min=сегодня 00:00 и time_max=сегодня 23:59.\n2. Проверь непрочитанные важные письма за последние 12 часов по всем аккаунтам — используй work_search с query=\"is:unread is:important\" channel=gmail.\n3. Загляни в свою память — есть ли задачи или напоминания на сегодня.\n\nСформируй краткий брифинг в формате:\n- Встречи сегодня (время, название, с кем)\n- Важные письма (от кого, тема, суть)\n- Задачи/напоминания\n\nОтправь брифинг через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\"). Используй Slack mrkdwn форматирование."
   },
   {
     "id": "weekly-report",

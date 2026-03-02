@@ -1,7 +1,7 @@
 # Work Agent Plugin
 
 Skeleton OpenClaw plugin providing tool entrypoints for:
-- `work_search_messages`
+- `work_search`
 - `work_summarize_project`
 - `work_send_email`
 - `work_schedule_meeting`

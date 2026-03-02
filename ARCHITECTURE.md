@@ -50,7 +50,7 @@ Postgres (shared):
 - **Runtime-only** (создаются агентом): `MEMORY.md`, `memory/*.md`
 
 **Tool Surface (OpenClaw)**
-- `work_search_messages` — поиск по Gmail + Telegram
+- `work_search` — unified search (Gmail, Telegram, WhatsApp, Drive, Calendar — параллельно)
 - `work_read_email` — чтение письма по ID
 - `work_send_email` — отправка через Gmail (требует подтверждения)
 - `work_list_calendars` — список Google Calendar
