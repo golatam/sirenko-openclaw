@@ -1,7 +1,12 @@
 {
   "agents": {
     "defaults": {
-      "workspace": "/data/openclaw-state/workspace"
+      "workspace": "/data/openclaw-state/workspace",
+      "memorySearch": {
+        "enabled": true,
+        "provider": "gemini",
+        "model": "gemini-embedding-001"
+      }
     }
   },
   "cron": {
@@ -52,9 +57,9 @@
   },
   "plugins": {
     "enabled": true,
-    "allow": ["work-agent", "telegram", "memory-core"],
+    "allow": ["work-agent", "telegram", "memory-lancedb"],
     "slots": {
-      "memory": "memory-core"
+      "memory": "memory-lancedb"
     },
     "load": {
       "paths": ["/app/work-agent"]
@@ -70,7 +75,7 @@
           "telegramSidecarUrl": "${TELEGRAM_SIDECAR_URL}"
         }
       },
-      "memory-core": {
+      "memory-lancedb": {
         "enabled": true
       }
     }

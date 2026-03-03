@@ -34,7 +34,7 @@ Runtime-файлы (`MEMORY.md`, `memory/*.md`, `cron/jobs.json`) пережив
 
 ## Плагины
 
-Включены: `work-agent` (кастомный), `telegram` (канал), `memory-core` (память).
+Включены: `work-agent` (кастомный), `telegram` (канал), `memory-lancedb` (vector memory, auto-recall/auto-capture, Gemini embeddings).
 Cron-подсистема включена: утренний брифинг (пн-пт 9:00 Madrid) + еженедельный отчёт (пт 16:00 Madrid). Heartbeat работает по умолчанию.
 
 ## Разработка

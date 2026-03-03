@@ -18,7 +18,7 @@ See: `ARCHITECTURE.md`
 ## Current Services (Railway)
 Project: `openclaw-work-agent`
 Services:
-- `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core)
+- `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-lancedb)
 - `google-mcp-sidecar` (FastMCP, 7 тулов, мультиаккаунт)
 - `telegram-sidecar` (Telethon MTProto ingestion + HTTP search API)
 - `whatsapp-sidecar` (Baileys ingestion → PostgreSQL, source-agnostic search через telegram-sidecar)
@@ -107,7 +107,7 @@ Gateway domain:
 - Персона: IDENTITY.md (мотиватор, без лести, краткость), USER.md (предпочтения, аккаунты)
 - Память по каналам: 1 Slack-канал = 1 папка в workspace (автосоздание при первом сообщении)
 - `work_get_channel_info` тул для определения текущего канала
-- `memory-core` плагин включён — persistent memory (MEMORY.md + daily logs)
+- `memory-lancedb` плагин включён — persistent memory (MEMORY.md + daily logs)
 - `HEARTBEAT.md` — стоячие инструкции (проверка срочной почты, напоминания о встречах)
 - Heartbeat запущен по умолчанию (~30 мин)
 - Cron-подсистема включена, 2 задачи: утренний брифинг (пн-пт 9:00 Madrid) + еженедельный отчёт (пт 16:00 Madrid)

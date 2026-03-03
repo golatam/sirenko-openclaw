@@ -68,7 +68,7 @@
 - [x] `memory-core` плагин включён (был заблокирован `plugins.allow`)
 - [x] Workspace перенесён на persistent volume (`/data/openclaw-state/workspace`)
 - [x] Статичные файлы (IDENTITY.md, USER.md) синхронизируются из image при старте
-- [ ] Перейти на `memory-lancedb` для auto-recall/auto-capture (нужен OpenAI API key для embeddings)
+- [x] Перейти на `memory-lancedb` для auto-recall/auto-capture (Gemini embeddings, gemini-embedding-001) (2026-03-03)
 
 ### Проактивность
 - [x] Heartbeat — запущен по умолчанию
@@ -83,13 +83,13 @@
 **Включены:**
 - `work-agent` — кастомный плагин (Gmail, Calendar, Drive, Telegram)
 - `telegram` — канал Telegram Bot
-- `memory-core` — файловая память (MEMORY.md + daily logs)
+- `memory-lancedb` — vector memory с auto-recall/auto-capture (Gemini embeddings)
 
 **Рекомендуется добавить:**
 - [x] `work_usage_summary` тул — токены и стоимость из session transcripts (вместо diagnostics-otel) (2026-02-26)
 
 **Рассмотреть позже:**
-- `memory-lancedb` — замена memory-core, семантический поиск (нужен OpenAI key)
+- ~~`memory-lancedb`~~ — done (Phase 3.5, 2026-03-03)
 - `lobster` — цепочки тулов с approval gates (inbox triage, weekly review pipeline)
 - `whatsapp` — WhatsApp Business канал (Phase 2)
 
