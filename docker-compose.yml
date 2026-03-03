@@ -33,8 +33,8 @@ services:
 
   google-mcp-sidecar:
     build:
-      context: .
-      dockerfile: google-mcp-sidecar/Dockerfile
+      context: ./google-mcp-sidecar
+      dockerfile: Dockerfile
     ports:
       - "8001:8000"
     environment:
