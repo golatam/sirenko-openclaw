@@ -9,7 +9,7 @@ Use OpenClaw Gateway as the primary runtime and add:
 - A Telegram MTProto sidecar for **user accounts** (3 accounts).
 
 **Services**
-1. OpenClaw Gateway (`gateway/`)
+1. OpenClaw Gateway (`services/gateway/`)
 - Node.js 22, OpenClaw v2026.2.23
 - Telegram bot channel (Telegram Bot API)
 - WhatsApp channel (Baileys) — pending
@@ -19,14 +19,14 @@ Use OpenClaw Gateway as the primary runtime and add:
 - Cron-подсистема для запланированных задач
 - Heartbeat для проактивных проверок (каждые ~30 мин)
 
-2. Google MCP Sidecar (`google-mcp-sidecar/`)
+2. Google MCP Sidecar (`services/google-mcp-sidecar/`)
 - Python 3.12, FastMCP (`stateless_http=True`)
 - google-api-python-client напрямую (без workspace-mcp)
 - 7 MCP-тулов с `account` параметром для мультиаккаунта
 - OAuth credentials через `GOOGLE_WORKSPACE_ACCOUNTS` JSON
 - Transport: MCP Streamable HTTP (JSON-RPC 2.0), порт 8000
 
-3. Telegram Sidecar (`telegram-sidecar/`)
+3. Telegram Sidecar (`services/telegram-sidecar/`)
 - Python 3.11, Telethon (MTProto)
 - Logs into 3 user accounts via StringSession
 - Ingests messages into Postgres

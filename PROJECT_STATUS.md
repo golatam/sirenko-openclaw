@@ -52,7 +52,7 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `gateway/work-agent/index.ts`: MCP-клиент на fetch(), 13 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send)
+- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 13 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send)
 - `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
 - `work_slack_send` — отправка сообщений в Slack (DM по email или channel ID); используется cron-задачами
 - 30s AbortController таймаут на все fetch-вызовы
@@ -60,6 +60,7 @@ Gateway domain:
 - `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
 - Email send: параметр `message` (не `body` — конфликтует с OpenClaw) → маппится в `body` для сайдкара
 - Директория переименована `work-agent-plugin/` → `work-agent/` (соответствует manifest ID)
+- Код разделён: `mcp-client.ts` (MCP session), `utils.ts` (хелперы), `index.ts` (тулы)
 
 ### Search & Reports (Phase 5)
 - `work_search` — унифицированный поиск по 5 источникам (Gmail, Telegram, WhatsApp, Drive, Calendar) с параллельным выполнением
@@ -127,29 +128,38 @@ Gateway domain:
 
 ## Files Structure
 ```
-gateway/
-  openclaw.json          — конфиг Gateway (agents, cron, channels, plugins)
-  Dockerfile             — Node.js 22 + OpenClaw
-  entrypoint.sh          — auth, workspace sync, cron seed, session cleanup
-  cron-seed.json         — seed для cron/jobs.json (2 задачи: briefing + weekly report)
-  work-agent/            — кастомный плагин (13 тулов)
-  workspace/
-    IDENTITY.md          — персона агента (always-overwrite)
-    USER.md              — данные пользователя (always-overwrite)
-    HEARTBEAT.md         — инструкции heartbeat (seed-only)
-google-mcp-sidecar/
-  server.py              — FastMCP + Google API (~280 строк)
-  requirements.txt       — pinned dependencies
-  Dockerfile
-  gen_token.py           — скрипт генерации OAuth refresh token
-telegram-sidecar/
-  main.py                — Telethon ingestion + aiohttp search API (source-agnostic)
-  schema.sql             — PostgreSQL schema
-  requirements.txt       — telethon, asyncpg, aiohttp
-whatsapp-sidecar/
-  main.js                — Baileys ingestion + HTTP health (~200 строк)
-  package.json           — @whiskeysockets/baileys, pg, pino
-  Dockerfile
+services/
+  gateway/
+    openclaw.json          — конфиг Gateway (agents, cron, channels, plugins)
+    Dockerfile             — Node.js 22 + OpenClaw
+    entrypoint.sh          — auth, workspace sync, cron seed, session cleanup
+    cron-seed.json         — seed для cron/jobs.json (2 задачи: briefing + weekly report)
+    work-agent/            — кастомный плагин (13 тулов)
+      index.ts             — plugin registration, 13 tool definitions
+      mcp-client.ts        — MCP JSON-RPC 2.0 session management
+      utils.ts             — fetchWithTimeout, extractParams, param, ok/err, confirmationId
+    workspace/
+      IDENTITY.md          — персона агента (always-overwrite)
+      USER.md              — данные пользователя (always-overwrite)
+      HEARTBEAT.md         — инструкции heartbeat (seed-only)
+  google-mcp-sidecar/
+    server.py              — FastMCP + Google API (~280 строк)
+    requirements.txt       — pinned dependencies
+    Dockerfile
+    gen_token.py           — скрипт генерации OAuth refresh token
+  telegram-sidecar/
+    main.py                — Telethon ingestion + aiohttp search API (source-agnostic)
+    schema.sql             — PostgreSQL schema
+    requirements.txt       — telethon, asyncpg, aiohttp
+  whatsapp-sidecar/
+    main.js                — Baileys ingestion + HTTP health (~200 строк)
+    package.json           — @whiskeysockets/baileys, pg, pino
+    Dockerfile
+scripts/
+  smoke-test.sh            — curl health endpoints для всех сервисов
+docker-compose.yml
+Makefile
+CLAUDE.md, PLAN.md, PROJECT_STATUS.md, .env.example
 ```
 
 ## Notes

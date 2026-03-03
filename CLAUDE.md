@@ -12,17 +12,17 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 Три сервиса + общая БД, деплой на Railway:
 
-1. **OpenClaw Gateway** (`gateway/`) — Node.js 22, OpenClaw v2026.2.23 (глобально). Загружает плагин `work-agent` по пути. HTTP API + Telegram бот-канал + Slack (Socket Mode, DM + каналы). Конфиг: `gateway/openclaw.json`. Персона агента: `gateway/workspace/IDENTITY.md` и `gateway/workspace/USER.md`. Heartbeat: `gateway/workspace/HEARTBEAT.md`.
+1. **OpenClaw Gateway** (`services/gateway/`) — Node.js 22, OpenClaw v2026.2.23 (глобально). Загружает плагин `work-agent` по пути. HTTP API + Telegram бот-канал + Slack (Socket Mode, DM + каналы). Конфиг: `services/gateway/openclaw.json`. Персона агента: `services/gateway/workspace/IDENTITY.md` и `services/gateway/workspace/USER.md`. Heartbeat: `services/gateway/workspace/HEARTBEAT.md`.
 
-2. **Telegram Sidecar** (`telegram-sidecar/`) — Python 3.11 asyncio, Telethon (MTProto). Логинится в 3 пользовательских аккаунта через StringSession, пишет сообщения в PostgreSQL. HTTP search API (source-agnostic: ищет и Telegram, и WhatsApp). Точка входа: `main.py`.
+2. **Telegram Sidecar** (`services/telegram-sidecar/`) — Python 3.11 asyncio, Telethon (MTProto). Логинится в 3 пользовательских аккаунта через StringSession, пишет сообщения в PostgreSQL. HTTP search API (source-agnostic: ищет и Telegram, и WhatsApp). Точка входа: `main.py`.
 
-5. **WhatsApp Sidecar** (`whatsapp-sidecar/`) — Node.js 22, @whiskeysockets/baileys. Подключается к WhatsApp через QR-код (Linked Devices), пишет сообщения в ту же таблицу `messages` (`source='whatsapp'`). Только ingestion, поиск через telegram-sidecar. Точка входа: `main.js`.
+3. **WhatsApp Sidecar** (`services/whatsapp-sidecar/`) — Node.js 22, @whiskeysockets/baileys. Подключается к WhatsApp через QR-код (Linked Devices), пишет сообщения в ту же таблицу `messages` (`source='whatsapp'`). Только ingestion, поиск через telegram-sidecar. Точка входа: `main.js`.
 
-3. **Google MCP Sidecar** (`google-mcp-sidecar/`) — Python 3.12, FastMCP + google-api-python-client. Gmail, Calendar, Drive через MCP (JSON-RPC 2.0, Streamable HTTP). Мультиаккаунт через `GOOGLE_WORKSPACE_ACCOUNTS` JSON. Порт 8000. Зависимости: `requirements.txt`.
+4. **Google MCP Sidecar** (`services/google-mcp-sidecar/`) — Python 3.12, FastMCP + google-api-python-client. Gmail, Calendar, Drive через MCP (JSON-RPC 2.0, Streamable HTTP). Мультиаккаунт через `GOOGLE_WORKSPACE_ACCOUNTS` JSON. Порт 8000. Зависимости: `requirements.txt`.
 
-4. **PostgreSQL** — общий на Railway. Схема в `telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
+5. **PostgreSQL** — общий на Railway. Схема в `services/telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
 
-Плагин (`gateway/work-agent/index.ts`) регистрирует 13 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
+Плагин (`services/gateway/work-agent/index.ts`) регистрирует 13 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
 
 ## Persistent Storage
 
@@ -30,7 +30,7 @@ Workspace агента живёт на Railway volume (`/data/openclaw-state/wor
 - **Always-overwrite**: `IDENTITY.md`, `USER.md` — source of truth в git, перезаписываются при деплое
 - **Seed-only**: `HEARTBEAT.md` — копируется из image только если отсутствует на volume, агент может менять в runtime
 
-Runtime-файлы (`MEMORY.md`, `memory/*.md`, `cron/jobs.json`) переживают деплои. `cron/jobs.json` сидируется из `gateway/cron-seed.json` через entrypoint (seed-only: только если файл отсутствует на volume).
+Runtime-файлы (`MEMORY.md`, `memory/*.md`, `cron/jobs.json`) переживают деплои. `cron/jobs.json` сидируется из `services/gateway/cron-seed.json` через entrypoint (seed-only: только если файл отсутствует на volume).
 
 ## Плагины
 
@@ -50,16 +50,16 @@ docker compose up --build
 
 # Или по отдельности:
 # Gateway (нужен openclaw глобально: npm install -g openclaw@2026.2.23)
-cd gateway && openclaw gateway run --allow-unconfigured --port 18789
+cd services/gateway && openclaw gateway run --allow-unconfigured --port 18789
 
 # Google MCP sidecar
-cd google-mcp-sidecar && docker build -t google-mcp . && docker run -p 8000:8000 --env-file .env google-mcp
+cd services/google-mcp-sidecar && docker build -t google-mcp . && docker run -p 8000:8000 --env-file .env google-mcp
 
 # Telegram sidecar (нужен .env по шаблону config.example.env)
-cd telegram-sidecar && pip install -r requirements.txt && python main.py
+cd services/telegram-sidecar && pip install -r requirements.txt && python main.py
 
 # Генерация Telegram StringSession (интерактивно)
-cd telegram-sidecar && python gen_session.py
+cd services/telegram-sidecar && python gen_session.py
 ```
 
 ### Деплой
@@ -72,7 +72,7 @@ cd telegram-sidecar && python gen_session.py
 
 - Документация ведётся на русском
 - Тулы плагина используют префикс `work_` и возвращают `{ content: [...], details: {...} }`
-- Схема конфигурации плагина: `gateway/work-agent/openclaw.plugin.json`
+- Схема конфигурации плагина: `services/gateway/work-agent/openclaw.plugin.json`
 - Конфиг Gateway использует `${VAR}` для интерполяции переменных окружения
 - Таблица `messages` сайдкара — общий слой данных; тулы плагина будут обращаться к ней через `dbUrl`
 - Все write-тулы (email, календарь) требуют подтверждения пользователя перед выполнением

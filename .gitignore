@@ -17,5 +17,5 @@ node_modules/
 !**/config.example.env
 
 # Python virtualenvs (legacy paths)
-telegram-sidecar/.venv/
-telegram-sidecar/.venv39/
+services/telegram-sidecar/.venv/
+services/telegram-sidecar/.venv39/

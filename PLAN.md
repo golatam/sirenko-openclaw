@@ -47,7 +47,7 @@
 - `GOOGLE_WORKSPACE_CLIENT_ID`, `GOOGLE_WORKSPACE_CLIENT_SECRET` — OAuth client
 - ~~`GOOGLE_WORKSPACE_REFRESH_TOKEN`~~ — удалён (2026-02-25)
 
-**Скрипт генерации токенов**: `google-mcp-sidecar/gen_token.py`
+**Скрипт генерации токенов**: `services/google-mcp-sidecar/gen_token.py`
 
 ### Аутентификация Anthropic (Claude)
 
@@ -55,7 +55,7 @@
 **Стало**: `ANTHROPIC_OAUTH_TOKEN` (OAuth через Claude Max подписка)
 
 Как работает:
-- `gateway/entrypoint.sh` при старте пишет `auth-profiles.json` из env var
+- `services/gateway/entrypoint.sh` при старте пишет `auth-profiles.json` из env var
 - OpenClaw читает auth store и использует OAuth токен
 - Используется `type: "api_key"` в auth-profiles (OpenClaw воспринимает OAuth token как API key)
 - `ANTHROPIC_API_KEY` удалён — OpenClaw его всё равно очищает (clearEnv)
@@ -76,7 +76,7 @@
 - [x] Cron включён: `"cron": { "enabled": true }` в `openclaw.json`
 - [x] Настроить cron-задачи: утренний брифинг (9:00 Madrid, пн-пт) + еженедельный отчёт (пт 16:00 Madrid) (2026-03-02)
 - [x] `work_slack_send` тул — DM по email через Slack API (delivery для cron, минуя баги announce) (2026-03-02)
-- [x] `gateway/cron-seed.json` → seed-only copy в entrypoint → `cron/jobs.json` на volume (2026-03-02)
+- [x] `services/gateway/cron-seed.json` → seed-only copy в entrypoint → `cron/jobs.json` на volume (2026-03-02)
 
 ### Плагины (встроенные OpenClaw)
 
@@ -132,7 +132,7 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 }
 ```
 
-- [x] Добавить `tools.media.audio` в `gateway/openclaw.json` (Groq provider) (2026-02-27)
+- [x] Добавить `tools.media.audio` в `services/gateway/openclaw.json` (Groq provider) (2026-02-27)
 - [x] Получить `GROQ_API_KEY` на groq.com и добавить в Railway env vars (сервис gateway) (2026-02-27)
 - [x] Задеплоить gateway (2026-02-27)
 - [x] Тест: отправить голосовое боту в Telegram (2026-02-27) ✓
@@ -163,23 +163,23 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 ## Phase 6 — Архитектурные улучшения
 
 ### Критичные (делать сейчас)
-- [x] Убрать дубликат `work-agent-plugin/` (оставить только `gateway/work-agent-plugin/`)
+- [x] Убрать дубликат `work-agent-plugin/` (оставить только `services/gateway/work-agent/`)
 - [x] Добавить `requirements.txt` для google-mcp-sidecar с пинами версий
 - [x] Добавить таймаут (AbortController) на fetch() в MCP-клиенте (`index.ts`)
 - [x] Расширить `.gitignore` — исключить `*.env`, `__pycache__/`, `node_modules/`
 
 ### Важные (улучшают надёжность)
-- [ ] Реструктурировать репо: `services/` + `plugins/` вместо плоской структуры
+- [x] Реструктурировать репо: все сервисы в `services/` (2026-03-03)
 - [x] Telegram search — REST API на telegram-sidecar с PostgreSQL full-text (2026-02-26)
 - [x] Добавить health check endpoints на оба сайдкара (2026-03-03)
 - [x] Создать `docker-compose.yml` для локальной разработки (5 сервисов + Postgres + Redis) (2026-03-02)
 
 ### Желательные (масштабируемость)
-- [ ] Выделить MCP-клиент из `index.ts` в отдельный `mcp-client.ts`
+- [x] Выделить MCP-клиент из `index.ts` в `mcp-client.ts` + `utils.ts` (2026-03-03)
 - [ ] Абстракция `adapter.ts` над OpenClaw Plugin SDK (защита от обновлений)
-- [ ] Feature branches workflow вместо прямых коммитов в main
-- [ ] Git tags для версий деплоя (`v0.1.0`, `v0.2.0`)
-- [ ] Smoke-тесты: gateway запускается, MCP-сервер отвечает на health
+- [x] Feature branches workflow вместо прямых коммитов в main (2026-03-03)
+- [x] Git tags для версий деплоя — `v0.6.0` (2026-03-03)
+- [x] Smoke-тесты: `scripts/smoke-test.sh` + `Makefile` (2026-03-03)
 
 ## Phase 7 — Hardening (Pending)
 - Monitoring and health checks
