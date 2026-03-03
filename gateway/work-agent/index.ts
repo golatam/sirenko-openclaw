@@ -1,162 +1,9 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { createHash } from "node:crypto";
+import { configureMcp, mcpCall } from "./mcp-client.js";
+import { fetchWithTimeout, extractParams, param, ok, err, confirmationId } from "./utils.js";
 
-// ---------------------------------------------------------------------------
-// MCP client — lightweight JSON-RPC 2.0 over HTTP (Node.js 22 native fetch)
-// ---------------------------------------------------------------------------
-
-const MCP_TIMEOUT_MS = 30_000;
-const FETCH_MAX_RETRIES = 3;
-const FETCH_RETRY_BASE_MS = 1_000; // 1s, 2s, 4s
-
-let _mcpUrl: string | undefined;
 let _tgSidecarUrl: string | undefined;
 let _tavilyApiKey: string | undefined;
-let _mcpSessionId: string | undefined;
-let _mcpInitPromise: Promise<void> | undefined;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = MCP_TIMEOUT_MS): Promise<Response> {
-  let lastError: Error | undefined;
-  for (let attempt = 0; attempt <= FETCH_MAX_RETRIES; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const res = await fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
-      return res;
-    } catch (e) {
-      lastError = e as Error;
-      // Only retry on network-level errors (fetch failed, ECONNREFUSED, DNS, abort/timeout)
-      // Do NOT retry if we got an HTTP response (that's handled by callers)
-      const msg = lastError.message || "";
-      const isNetworkError = msg.includes("fetch failed") ||
-        msg.includes("ECONNREFUSED") ||
-        msg.includes("ENOTFOUND") ||
-        msg.includes("ETIMEDOUT") ||
-        msg.includes("UND_ERR_CONNECT_TIMEOUT") ||
-        msg.includes("abort") ||
-        lastError.name === "AbortError";
-      if (!isNetworkError || attempt === FETCH_MAX_RETRIES) {
-        throw lastError;
-      }
-      const delayMs = FETCH_RETRY_BASE_MS * Math.pow(2, attempt);
-      console.error(`[work-agent] fetch attempt ${attempt + 1} failed (${msg}), retrying in ${delayMs}ms...`);
-      await sleep(delayMs);
-    }
-  }
-  throw lastError!;
-}
-
-function mcpUrl(): string {
-  if (!_mcpUrl) throw new Error("mcpServerUrl is not configured");
-  return _mcpUrl;
-}
-
-/** Parse MCP response that may be JSON or SSE (text/event-stream). */
-async function parseMcpBody(res: Response): Promise<{ result?: unknown; error?: { message: string } }> {
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("text/event-stream")) {
-    const text = await res.text();
-    // SSE format: "event: message\ndata: {json}\n\n"
-    const lines = text.split("\n");
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      if (line.startsWith("data:")) {
-        return JSON.parse(line.slice(5).trim());
-      }
-    }
-    throw new Error("No data in SSE response");
-  }
-  return res.json();
-}
-
-async function mcpInit(): Promise<void> {
-  const res = await fetchWithTimeout(`${mcpUrl()}/mcp`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "work-agent-plugin", version: "1.0.0" },
-      },
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`MCP init HTTP ${res.status}: ${await res.text()}`);
-  }
-  const sid = res.headers.get("mcp-session-id");
-  if (sid) _mcpSessionId = sid;
-  // Read body to completion (may be JSON or SSE)
-  await parseMcpBody(res);
-}
-
-async function ensureMcpSession(): Promise<void> {
-  if (_mcpSessionId) return;
-  if (!_mcpInitPromise) {
-    _mcpInitPromise = mcpInit()
-      .then(() => {
-        console.error("[work-agent] MCP session initialized, sessionId:", _mcpSessionId);
-      })
-      .catch((e) => {
-        console.error("[work-agent] MCP init failed:", (e as Error).message);
-        _mcpInitPromise = undefined;
-        throw e;
-      });
-  }
-  await _mcpInitPromise;
-}
-
-async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
-  await ensureMcpSession();
-
-  const doCall = async (): Promise<Response> => {
-    const hdrs: Record<string, string> = {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    };
-    if (_mcpSessionId) hdrs["Mcp-Session-Id"] = _mcpSessionId;
-    return fetchWithTimeout(`${mcpUrl()}/mcp`, {
-      method: "POST",
-      headers: hdrs,
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: Date.now(),
-        method: "tools/call",
-        params: { name: toolName, arguments: args },
-      }),
-    });
-  };
-
-  let res = await doCall();
-  if (!res.ok) {
-    // Session expired — reset and retry once
-    if (res.status === 404 || res.status === 400) {
-      console.error(`[work-agent] MCP session expired (${res.status}), re-initializing...`);
-      _mcpSessionId = undefined;
-      _mcpInitPromise = undefined;
-      await ensureMcpSession();
-      res = await doCall();
-      if (!res.ok) {
-        throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
-      }
-    } else {
-      throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
-    }
-  }
-  const json = await parseMcpBody(res);
-  if (json.error) throw new Error(json.error.message);
-  return json.result;
-}
 
 // ---------------------------------------------------------------------------
 // Tavily web search — lightweight REST API client
@@ -243,61 +90,6 @@ async function slackApi(method: string, body: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Extract the params object from execute() arguments.
- * OpenClaw calls execute(toolUseId, params, context, callback) — 4 args.
- * This helper safely extracts the params object regardless of call convention.
- */
-function extractParams(rawArgs: unknown[]): Record<string, unknown> {
-  if (typeof rawArgs[0] === "string" && rawArgs.length > 1 && typeof rawArgs[1] === "object" && rawArgs[1] !== null) {
-    return rawArgs[1] as Record<string, unknown>;
-  }
-  return (rawArgs[0] as Record<string, unknown>) ?? {};
-}
-
-/**
- * Resolve a parameter that may arrive as snake_case or camelCase.
- * OpenClaw may convert snake_case param names (e.g. message_id → messageId)
- * when routing tool calls. This helper checks both forms.
- */
-function param(params: Record<string, unknown>, snakeName: string): unknown {
-  if (params[snakeName] !== undefined) return params[snakeName];
-  const camelName = snakeName.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
-  if (camelName !== snakeName && params[camelName] !== undefined) return params[camelName];
-  return undefined;
-}
-
-function ok(data: unknown, details: Record<string, unknown> = {}) {
-  return {
-    content: [
-      { type: "text" as const, text: JSON.stringify(data, null, 2) },
-    ],
-    details: { ok: true, ...details },
-  };
-}
-
-function err(message: string) {
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify({ ok: false, error: message }, null, 2),
-      },
-    ],
-    details: { ok: false, error: message },
-  };
-}
-
-/** Deterministic 12-char hex hash from a payload (sorted-key canonical JSON). */
-function confirmationId(payload: Record<string, unknown>): string {
-  const canonical = JSON.stringify(payload, Object.keys(payload).sort());
-  return createHash("sha256").update(canonical).digest("hex").slice(0, 12);
-}
-
-// ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
 
@@ -326,10 +118,11 @@ const WorkAgentPlugin = {
   register(api: OpenClawPluginApi) {
     const config = (api as unknown as { config: Record<string, string> })
       .config ?? {};
-    _mcpUrl = config.mcpServerUrl || process.env.GOOGLE_MCP_URL;
+    const mcpUrl = config.mcpServerUrl || process.env.GOOGLE_MCP_URL;
+    if (mcpUrl) configureMcp(mcpUrl);
     _tgSidecarUrl = config.telegramSidecarUrl || process.env.TELEGRAM_SIDECAR_URL;
     _tavilyApiKey = config.tavilyApiKey || process.env.TAVILY_API_KEY;
-    console.error(`[work-agent] mcpUrl=${_mcpUrl} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"}`);
+    console.error(`[work-agent] mcpUrl=${mcpUrl} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"}`);
 
     // -----------------------------------------------------------------------
     // Gmail tools
