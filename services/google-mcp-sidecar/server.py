@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import time
 from email.mime.text import MIMEText
 from typing import Any
 
@@ -69,6 +70,8 @@ def _load_accounts():
 
 
 _load_accounts()
+
+_start_time = time.monotonic()
 
 
 def _resolve_account(account: str | None) -> str:
@@ -511,13 +514,41 @@ def _normalize_args_app(inner):
         if scope["type"] != "http":
             return await inner(scope, receive, send)
 
-        # Health check endpoint
+        # Deep health check endpoint
         path = scope.get("path", "")
         if scope.get("method", "") == "GET" and path == "/health":
+            checks: dict[str, Any] = {}
+            overall = "ok"
+
+            # Check OAuth validity per account by calling userinfo
+            account_details = []
+            for acct in _accounts:
+                try:
+                    creds = _get_credentials(acct)
+                    if creds and creds.valid:
+                        account_details.append({"account": acct, "status": "ok"})
+                    else:
+                        account_details.append({"account": acct, "status": "error", "detail": "credentials invalid"})
+                        overall = "degraded"
+                except Exception as e:
+                    account_details.append({"account": acct, "status": "error", "detail": str(e)})
+                    overall = "degraded"
+
+            if not _accounts:
+                overall = "error"
+                checks["accounts"] = {"status": "error", "detail": "no accounts configured"}
+            else:
+                failed = [a for a in account_details if a["status"] != "ok"]
+                if failed:
+                    checks["accounts"] = {"status": "degraded", "details": f"{len(failed)}/{len(account_details)} accounts unhealthy", "accounts": account_details}
+                else:
+                    checks["accounts"] = {"status": "ok", "count": len(account_details)}
+
+            uptime = int(time.monotonic() - _start_time)
             body = json.dumps({
-                "status": "ok",
-                "accounts": len(_accounts),
-                "accounts_list": list(_accounts.keys()),
+                "status": overall,
+                "checks": checks,
+                "uptime_seconds": uptime,
             }).encode("utf-8")
             await send({
                 "type": "http.response.start",

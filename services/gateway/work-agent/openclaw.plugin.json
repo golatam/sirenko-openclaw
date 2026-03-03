@@ -1,7 +1,7 @@
 {
   "id": "work-agent",
   "name": "Work Agent",
-  "description": "Unified search across Gmail/Calendar/Drive/Telegram/WhatsApp — plus send, schedule, report, interactive UI.",
+  "description": "Unified search across Gmail/Calendar/Drive/Telegram/WhatsApp — plus send, schedule, report, interactive UI, and system health monitoring.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

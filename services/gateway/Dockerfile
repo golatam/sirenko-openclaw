@@ -1,7 +1,7 @@
 FROM node:22-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git ca-certificates \
+  && apt-get install -y --no-install-recommends git ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g openclaw@2026.2.23 clawhub
@@ -17,5 +17,8 @@ ENV NODE_ENV=production
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
+
+HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
+  CMD curl -sf http://localhost:${PORT:-18789}/ || exit 1
 
 CMD ["/app/entrypoint.sh"]

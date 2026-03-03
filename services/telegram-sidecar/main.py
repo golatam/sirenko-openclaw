@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
@@ -13,6 +14,9 @@ from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
 load_dotenv()
+
+_start_time = time.monotonic()
+_client_status: dict[str, str] = {}  # label -> "connected" | "disconnected" | "failed"
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
@@ -203,7 +207,9 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
         await client.start(phone=account.phone)
     except Exception as e:
         print(f"[TG] FAILED to start {account.label} ({account.phone}): {e}", flush=True, file=sys.stderr)
+        _client_status[account.label] = "failed"
         return
+    _client_status[account.label] = "connected"
     print(f"[TG] {account.label} connected", flush=True, file=sys.stderr)
     await ensure_account_row(pool, account)
 
@@ -352,9 +358,38 @@ async def handle_search(request: web.Request) -> web.Response:
 
 
 async def handle_health(request: web.Request) -> web.Response:
+    checks: dict[str, dict] = {}
+    overall = "ok"
+
+    # DB connectivity check
+    pool: asyncpg.Pool = request.app["pool"]
+    try:
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        checks["db"] = {"status": "ok"}
+    except Exception as e:
+        checks["db"] = {"status": "error", "detail": str(e)}
+        overall = "error"
+
+    # Telethon client status
+    total = request.app.get("account_count", 0)
+    connected = sum(1 for s in _client_status.values() if s == "connected")
+    if total == 0:
+        checks["accounts"] = {"status": "error", "detail": "no accounts configured"}
+        overall = "error"
+    elif connected < total:
+        disconnected = [label for label, s in _client_status.items() if s != "connected"]
+        checks["accounts"] = {"status": "degraded", "details": f"{disconnected} not connected", "connected": connected, "total": total}
+        if overall == "ok":
+            overall = "degraded"
+    else:
+        checks["accounts"] = {"status": "ok", "connected": connected, "total": total}
+
+    uptime = int(time.monotonic() - _start_time)
     return web.json_response({
-        "status": "ok",
-        "accounts": request.app.get("account_count", 0),
+        "status": overall,
+        "checks": checks,
+        "uptime_seconds": uptime,
     })
 
 

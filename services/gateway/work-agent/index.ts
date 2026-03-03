@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { configureMcp, mcpCall } from "./mcp-client.js";
+import { configureMcp, getMcpUrl, mcpCall } from "./mcp-client.js";
 import { fetchWithTimeout, extractParams, param, ok, err, confirmationId } from "./utils.js";
 
 let _tgSidecarUrl: string | undefined;
@@ -757,6 +757,78 @@ const WorkAgentPlugin = {
         } catch (e) {
           return err(`Usage data unavailable: ${(e as Error).message}`);
         }
+      },
+    });
+
+    // -----------------------------------------------------------------------
+    // Health check
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_health_check",
+      label: "System Health Check",
+      description:
+        "Check health of all system components: Google MCP sidecar, Telegram sidecar, WhatsApp sidecar. " +
+        "Returns per-component status (ok/degraded/error) and overall system status. " +
+        "Use this from heartbeat or cron to detect outages.",
+      parameters: { type: "object", properties: {}, required: [] },
+      async execute() {
+        const components: Record<string, unknown> = {};
+        let overall = "ok";
+
+        const setWorst = (status: string) => {
+          if (status === "error") overall = "error";
+          else if (status === "degraded" && overall !== "error") overall = "degraded";
+        };
+
+        // Helper: probe a /health endpoint
+        const probeHealth = async (url: string, name: string) => {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 10_000);
+            const res = await fetch(`${url}/health`, { signal: controller.signal }).finally(() => clearTimeout(timer));
+            if (!res.ok) {
+              components[name] = { status: "error", detail: `HTTP ${res.status}` };
+              setWorst("error");
+              return;
+            }
+            const data = (await res.json()) as Record<string, unknown>;
+            components[name] = data;
+            setWorst((data.status as string) || "ok");
+          } catch (e) {
+            components[name] = { status: "error", detail: (e as Error).message };
+            setWorst("error");
+          }
+        };
+
+        // Probe all sidecars in parallel
+        const probes: Promise<void>[] = [];
+
+        const mcpUrl = getMcpUrl();
+        if (mcpUrl) {
+          probes.push(probeHealth(mcpUrl, "google_mcp_sidecar"));
+        } else {
+          components.google_mcp_sidecar = { status: "error", detail: "not configured" };
+          setWorst("error");
+        }
+
+        if (_tgSidecarUrl) {
+          probes.push(probeHealth(_tgSidecarUrl, "telegram_sidecar"));
+        } else {
+          components.telegram_sidecar = { status: "error", detail: "not configured" };
+          setWorst("error");
+        }
+
+        const waSidecarUrl = process.env.WHATSAPP_SIDECAR_URL;
+        if (waSidecarUrl) {
+          probes.push(probeHealth(waSidecarUrl, "whatsapp_sidecar"));
+        } else {
+          components.whatsapp_sidecar = { status: "degraded", detail: "URL not configured (optional)" };
+        }
+
+        await Promise.allSettled(probes);
+
+        return ok({ status: overall, components }, { status: overall });
       },
     });
 

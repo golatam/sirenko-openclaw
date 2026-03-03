@@ -13,6 +13,11 @@ export function configureMcp(url: string): void {
   _mcpUrl = url;
 }
 
+/** Get the configured MCP server URL (for health checks). */
+export function getMcpUrl(): string | undefined {
+  return _mcpUrl;
+}
+
 function mcpUrl(): string {
   if (!_mcpUrl) throw new Error("mcpServerUrl is not configured");
   return _mcpUrl;

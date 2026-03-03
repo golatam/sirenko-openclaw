@@ -181,7 +181,20 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [x] Git tags для версий деплоя — `v0.6.0` (2026-03-03)
 - [x] Smoke-тесты: `scripts/smoke-test.sh` + `Makefile` (2026-03-03)
 
-## Phase 7 — Hardening (Pending)
-- Monitoring and health checks
-- Backups + retention
-- Access policy review
+## Phase 7 — Hardening (Done)
+
+Контекст: агент лежал ~1 час (CRASHED → FAILED билды), ни одного алерта не пришло. Причины: невалидный конфиг + несинхронизированные root directories.
+
+- [x] Deep health checks — все 4 сервиса возвращают `{status, checks, uptime_seconds}` с реальной диагностикой (2026-03-03)
+  - google-mcp-sidecar: OAuth credential validation per account
+  - telegram-sidecar: DB connectivity + Telethon client status
+  - whatsapp-sidecar: DB connectivity + WhatsApp connection status
+  - gateway: `work_health_check` тул — пробирует все сайдкары параллельно
+- [x] Docker HEALTHCHECK — все 4 Dockerfile'а (Railway auto-restart при unhealthy) (2026-03-03)
+  - Gateway: `--interval=60s --start-period=120s --retries=3`
+  - Сайдкары: `--interval=30s --start-period=30s --retries=3`
+- [x] Cron health check — каждые 30 мин, алерт в Slack только при degraded/error (2026-03-03)
+- [x] HEARTBEAT.md — проверка здоровья при каждом heartbeat тике (2026-03-03)
+- [x] `scripts/pg-backup.sh` — pg_dump + gzip, 7-day retention (2026-03-03)
+
+Не вошло (overkill для текущего масштаба): centralized logging, Grafana/metrics, UptimeRobot

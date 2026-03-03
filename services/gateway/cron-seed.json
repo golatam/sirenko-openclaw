@@ -24,5 +24,18 @@
     "sessionTarget": "isolated",
     "delivery": { "mode": "none" },
     "message": "Сейчас пятница. Подготовь еженедельный отчёт для Кирилла.\n\n1. Используй work_weekly_report с projects: [\"dolphin\", \"flexify\", \"petproject\", \"karelia\"] — это соберёт данные из Gmail, Calendar и Telegram за текущую неделю.\n2. Загляни в свою память — что было важного на этой неделе, какие решения приняты.\n3. Проверь usage через work_usage_summary за 7 дней.\n\nСформируй отчёт в формате:\n- Итоги по каждому проекту (ключевые письма, встречи, решения)\n- Общая статистика (сколько писем, встреч, сообщений)\n- Расход токенов и стоимость за неделю\n- Планы/задачи на следующую неделю (из памяти)\n\nОтправь отчёт через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\"). Используй Slack mrkdwn форматирование."
+  },
+  {
+    "id": "health-check",
+    "name": "System Health Check",
+    "enabled": true,
+    "schedule": {
+      "kind": "cron",
+      "expr": "*/30 * * * *",
+      "tz": "Europe/Madrid"
+    },
+    "sessionTarget": "isolated",
+    "delivery": { "mode": "none" },
+    "message": "Выполни проверку здоровья системы.\n\n1. Вызови work_health_check — это проверит все компоненты (Google MCP, Telegram sidecar, WhatsApp sidecar).\n2. Если общий статус 'degraded' или 'error' — отправь алерт через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\") с деталями какой компонент сломался.\n3. Если всё ok — НЕ отправляй ничего (не спами).\n\nФормат алерта:\n⚠️ *System Health Alert*\nStatus: [degraded/error]\n[Детали по каждому проблемному компоненту]\nTime: [текущее время]"
   }
 ]

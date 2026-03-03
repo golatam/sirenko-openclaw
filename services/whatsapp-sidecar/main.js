@@ -195,6 +195,7 @@ let reconnectAttempts = 0;
 let isConnected = false;
 let messageCount = 0;
 let lastQr = null;
+const startTime = Date.now();
 
 async function startWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -324,16 +325,44 @@ async function startWhatsApp() {
 // HTTP health endpoint
 // ---------------------------------------------------------------------------
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/health") {
+    const checks = {};
+    let overall = "ok";
+
+    // DB connectivity check
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("SELECT 1");
+        checks.db = { status: "ok" };
+      } finally {
+        client.release();
+      }
+    } catch (e) {
+      checks.db = { status: "error", detail: e.message };
+      overall = "error";
+    }
+
+    // WhatsApp connection status
+    if (isConnected) {
+      checks.whatsapp = { status: "ok", account: ACCOUNT_LABEL };
+    } else if (lastQr) {
+      checks.whatsapp = { status: "degraded", detail: "awaiting QR scan", account: ACCOUNT_LABEL };
+      if (overall === "ok") overall = "degraded";
+    } else {
+      checks.whatsapp = { status: "error", detail: "disconnected", account: ACCOUNT_LABEL };
+      overall = "degraded";
+    }
+
+    const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        status: isConnected ? "ok" : lastQr ? "awaiting_qr" : "disconnected",
-        account: ACCOUNT_LABEL,
-        messages_ingested: messageCount,
-      }),
-    );
+    res.end(JSON.stringify({
+      status: overall,
+      checks,
+      uptime_seconds: uptimeSeconds,
+      messages_ingested: messageCount,
+    }));
     return;
   }
   if (req.method === "GET" && req.url === "/qr") {

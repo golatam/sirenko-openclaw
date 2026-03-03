@@ -52,7 +52,7 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 13 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send)
+- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 14 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send, health check)
 - `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
 - `work_slack_send` — отправка сообщений в Slack (DM по email или channel ID); используется cron-задачами
 - 30s AbortController таймаут на все fetch-вызовы
@@ -114,6 +114,19 @@ Gateway domain:
 - Cron-подсистема включена, 2 задачи: утренний брифинг (пн-пт 9:00 Madrid) + еженедельный отчёт (пт 16:00 Madrid)
 - Cron seed: `gateway/cron-seed.json` → volume `cron/jobs.json` (seed-only через entrypoint)
 
+### Hardening (Phase 7)
+- Deep health checks: все 4 сервиса возвращают `{status, checks, uptime_seconds}` с реальной диагностикой
+  - google-mcp-sidecar: проверка OAuth credentials per account
+  - telegram-sidecar: DB connectivity (`SELECT 1`) + Telethon client status per account
+  - whatsapp-sidecar: DB connectivity + WhatsApp connection status
+  - gateway plugin: `work_health_check` тул — пробирует все сайдкары параллельно
+- Docker HEALTHCHECK во всех Dockerfiles (Railway auto-restart при unhealthy)
+  - Gateway: 60s interval, 120s start-period (медленный старт OpenClaw)
+  - Сайдкары: 30s interval, 30s start-period
+- Cron health check: каждые 30 мин, алерт в Slack при degraded/error
+- HEARTBEAT.md: добавлена проверка здоровья системы
+- `scripts/pg-backup.sh`: pg_dump с 7-дневным retention
+
 ## Pending
 - [x] Проверить end-to-end: отправка письма, создание события (2026-02-25)
 - [x] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway (2026-02-25)
@@ -134,7 +147,7 @@ services/
     Dockerfile             — Node.js 22 + OpenClaw
     entrypoint.sh          — auth, workspace sync, cron seed, session cleanup
     cron-seed.json         — seed для cron/jobs.json (2 задачи: briefing + weekly report)
-    work-agent/            — кастомный плагин (13 тулов)
+    work-agent/            — кастомный плагин (14 тулов)
       index.ts             — plugin registration, 13 tool definitions
       mcp-client.ts        — MCP JSON-RPC 2.0 session management
       utils.ts             — fetchWithTimeout, extractParams, param, ok/err, confirmationId
