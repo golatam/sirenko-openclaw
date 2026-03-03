@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { configureMcp, getMcpUrl, mcpCall } from "./mcp-client.js";
 import { fetchWithTimeout, extractParams, param, ok, err, confirmationId } from "./utils.js";
+import { getPluginConfig, extractContext, loadCostUsageSummaryFn } from "./adapter.js";
 
 let _tgSidecarUrl: string | undefined;
 let _tavilyApiKey: string | undefined;
@@ -116,13 +117,11 @@ const WorkAgentPlugin = {
   },
 
   register(api: OpenClawPluginApi) {
-    const config = (api as unknown as { config: Record<string, string> })
-      .config ?? {};
-    const mcpUrl = config.mcpServerUrl || process.env.GOOGLE_MCP_URL;
-    if (mcpUrl) configureMcp(mcpUrl);
-    _tgSidecarUrl = config.telegramSidecarUrl || process.env.TELEGRAM_SIDECAR_URL;
-    _tavilyApiKey = config.tavilyApiKey || process.env.TAVILY_API_KEY;
-    console.error(`[work-agent] mcpUrl=${mcpUrl} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"}`);
+    const config = getPluginConfig(api);
+    if (config.mcpServerUrl) configureMcp(config.mcpServerUrl);
+    _tgSidecarUrl = config.telegramSidecarUrl;
+    _tavilyApiKey = config.tavilyApiKey;
+    console.error(`[work-agent] mcpUrl=${config.mcpServerUrl} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"}`);
 
     // -----------------------------------------------------------------------
     // Gmail tools
@@ -685,7 +684,7 @@ const WorkAgentPlugin = {
         "Returns current conversation context: channel name, channel ID, source (slack/telegram/dm), user info. Call this to know where you are.",
       parameters: { type: "object", properties: {}, required: [] },
       async execute(...rawArgs: unknown[]) {
-        const context = rawArgs[2] as Record<string, unknown> | undefined;
+        const context = extractContext(rawArgs);
         console.error("[work_get_channel_info] context:", JSON.stringify(context, null, 2));
 
         if (!context) return ok({ warning: "No context available" });
@@ -731,13 +730,8 @@ const WorkAgentPlugin = {
         const params = extractParams(rawArgs);
         const days = (param(params, "days") as number) || 7;
         try {
-          // Dynamic import of internal OpenClaw module (version pinned to 2026.2.23)
-          const openclawMain = require.resolve("openclaw");
-          const modulePath = openclawMain.replace(
-            /dist[/\\]index\.(js|ts)$/,
-            "dist/plugin-sdk/infra/session-cost-usage.js",
-          );
-          const { loadCostUsageSummary } = await import(modulePath);
+          const loadCostUsageSummary = await loadCostUsageSummaryFn();
+          if (!loadCostUsageSummary) return err("Usage module not available in this OpenClaw version");
           const summary = await loadCostUsageSummary({ days });
           return ok({
             period: `last ${days} days`,

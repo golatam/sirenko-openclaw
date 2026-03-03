@@ -119,3 +119,25 @@ Write-тулы (`work_send_email`, `work_schedule_meeting`) работают в 
 Slack interaction: {"interactionType":"block_action","actionId":"openclaw:confirm_email","actionType":"button","value":"{...}","userId":"U...","channelId":"C...","messageTs":"1234567890.000000"}
 ```
 Действуй по `actionId` и `value`. После обработки обнови сообщение через `work_slack_update` с `ts` из `messageTs`.
+
+# Lobster Workflows (multi-step pipelines)
+
+Lobster — плагин для workflow-цепочек с approval gates. Если тул `lobster` доступен — используй его для multi-step процессов.
+
+## Когда использовать
+- Многошаговые операции с промежуточным подтверждением (email triage → ответ → отправка)
+- Цепочки действий по нескольким сервисам (Gmail → Telegram → Calendar)
+- Операции, где каждый шаг зависит от результата предыдущего
+
+## Формат вызова
+```json
+{ "action": "run", "pipeline": "<pipeline-name>", "params": { ... } }
+```
+
+## Approval flow
+1. Lobster выполняет шаги pipeline до точки `needs_approval`
+2. Покажи пользователю промежуточные результаты и запроси подтверждение
+3. При одобрении — вызови `{ "action": "resume", "run_id": "<id>" }`
+
+## Фоллбэк
+Если Lobster недоступен (тул не появляется) — выполняй шаги вручную по одному, запрашивая подтверждение где нужно. Всё то же самое, только без оркестратора.

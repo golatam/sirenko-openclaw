@@ -57,7 +57,7 @@
   },
   "plugins": {
     "enabled": true,
-    "allow": ["work-agent", "telegram", "memory-core"],
+    "allow": ["work-agent", "telegram", "memory-core", "lobster"],
     "slots": {
       "memory": "memory-core"
     },
