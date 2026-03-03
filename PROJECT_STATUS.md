@@ -1,6 +1,6 @@
 # Project Status — OpenClaw Work Agent
 
-Date: 2026-02-26
+Date: 2026-03-03
 
 ## Goal
 Build a focused agent using OpenClaw for:
@@ -60,6 +60,16 @@ Gateway domain:
 - `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
 - Email send: параметр `message` (не `body` — конфликтует с OpenClaw) → маппится в `body` для сайдкара
 - Директория переименована `work-agent-plugin/` → `work-agent/` (соответствует manifest ID)
+
+### Search & Reports (Phase 5)
+- `work_search` — унифицированный поиск по 5 источникам (Gmail, Telegram, WhatsApp, Drive, Calendar) с параллельным выполнением
+- `work_weekly_report` — сбор данных из всех источников (Gmail, Calendar, Telegram, Drive) для еженедельного отчёта
+- `work_summarize_project` — саммари проекта из Gmail, Telegram, Drive (параллельно через Promise.allSettled)
+- Confirmation guardrails: `work_send_email` и `work_schedule_meeting` используют preview/confirm flow
+  - Без `confirmed` → preview с `confirmation_id` (детерминистичный SHA-256 хеш от payload)
+  - С `confirmed: true` + `confirmation_id` → проверка хеша → выполнение
+  - Stateless: хеш воспроизводим, не нужно хранить в памяти
+- IDENTITY.md: инструкции по алгоритму подтверждения для агента
 
 ### Telegram
 - Telegram bot channel включён и отвечает

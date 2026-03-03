@@ -151,10 +151,14 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [x] Настроен Railway Webhook → Slack (deploy, crash, resource alerts)
 - ~~Slack Activity Alerts template~~ — заменено нативными Railway Webhooks (не нужен отдельный сервис)
 
-## Phase 5 — Search & Reports (Pending)
-- Implement unified search across sources
-- Implement weekly reports and scheduling
-- Add tool guardrails and confirmation flows
+## Phase 5 — Search & Reports (Done)
+- [x] `work_search` — унифицированный поиск по 5 источникам (Gmail, Telegram, WhatsApp, Drive, Calendar) с параллельным выполнением
+- [x] `work_weekly_report` — сбор данных из Gmail, Calendar, Telegram, Drive для еженедельного отчёта
+- [x] `work_summarize_project` — саммари по проекту из Gmail, Telegram, Drive (параллельно)
+- [x] Cron-задачи: утренний брифинг (пн-пт 9:00 Madrid) + еженедельный отчёт (пт 16:00 Madrid) (2026-03-02)
+- [x] Confirmation guardrails для `work_send_email` и `work_schedule_meeting` — preview/confirm flow с детерминистичным confirmation_id (2026-03-03)
+- [x] Drive-данные в `work_weekly_report` и `work_summarize_project` (2026-03-03)
+- [x] IDENTITY.md — инструкции по алгоритму подтверждения (2026-03-03)
 
 ## Phase 6 — Архитектурные улучшения
 

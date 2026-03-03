@@ -1,4 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { createHash } from "node:crypto";
 
 // ---------------------------------------------------------------------------
 // MCP client — lightweight JSON-RPC 2.0 over HTTP (Node.js 22 native fetch)
@@ -290,6 +291,12 @@ function err(message: string) {
   };
 }
 
+/** Deterministic 12-char hex hash from a payload (sorted-key canonical JSON). */
+function confirmationId(payload: Record<string, unknown>): string {
+  const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 12);
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -476,7 +483,9 @@ const WorkAgentPlugin = {
       name: "work_send_email",
       label: "Send Email",
       description:
-        "Send an email via a connected Gmail account. Requires user confirmation.",
+        "Send an email via a connected Gmail account. " +
+        "First call WITHOUT confirmed — returns a preview with confirmation_id. " +
+        "Then call again WITH confirmed: true and the same confirmation_id to execute.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -490,6 +499,14 @@ const WorkAgentPlugin = {
           message: { type: "string", description: "Email body (plain text or HTML)" },
           cc: { type: "string", description: "CC recipients (comma-separated)" },
           bcc: { type: "string", description: "BCC recipients (comma-separated)" },
+          confirmed: {
+            type: "boolean",
+            description: "Set to true to execute after user confirmed the preview",
+          },
+          confirmation_id: {
+            type: "string",
+            description: "Confirmation ID from the preview response",
+          },
         },
         required: ["to", "subject", "message"],
       },
@@ -501,12 +518,45 @@ const WorkAgentPlugin = {
           const message = param(params, "message") as string;
           if (!to || !subject || !message) return err("to, subject, and message are required");
 
-          const args: Record<string, unknown> = { to, subject, body: message };
           const account = param(params, "account") as string | undefined;
-          if (account) args.account = account;
           const cc = param(params, "cc") as string | undefined;
-          if (cc) args.cc = cc;
           const bcc = param(params, "bcc") as string | undefined;
+
+          // Build canonical payload for confirmation hash
+          const payload: Record<string, unknown> = { to, subject, message };
+          if (account) payload.account = account;
+          if (cc) payload.cc = cc;
+          if (bcc) payload.bcc = bcc;
+          const cid = confirmationId(payload);
+
+          const confirmed = param(params, "confirmed") as boolean | undefined;
+          const providedCid = param(params, "confirmation_id") as string | undefined;
+
+          // Preview mode (default)
+          if (!confirmed) {
+            return ok({
+              preview: true,
+              confirmation_id: cid,
+              action: "send_email",
+              details: {
+                from: account || "(default account)",
+                to,
+                subject,
+                message_preview: message.length > 200 ? message.slice(0, 200) + "…" : message,
+                cc: cc || undefined,
+                bcc: bcc || undefined,
+              },
+            });
+          }
+
+          // Confirmed — verify confirmation_id
+          if (providedCid !== cid) {
+            return err("confirmation_id mismatch — parameters changed since preview, please re-preview");
+          }
+
+          const args: Record<string, unknown> = { to, subject, body: message };
+          if (account) args.account = account;
+          if (cc) args.cc = cc;
           if (bcc) args.bcc = bcc;
 
           const result = await mcpCall("gmail_send_email", args);
@@ -607,7 +657,9 @@ const WorkAgentPlugin = {
       name: "work_schedule_meeting",
       label: "Schedule Meeting",
       description:
-        "Create a Google Calendar event. Requires user confirmation.",
+        "Create a Google Calendar event. " +
+        "First call WITHOUT confirmed — returns a preview with confirmation_id. " +
+        "Then call again WITH confirmed: true and the same confirmation_id to execute.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -630,6 +682,14 @@ const WorkAgentPlugin = {
             type: "string",
             description: "Calendar ID (default: primary)",
           },
+          confirmed: {
+            type: "boolean",
+            description: "Set to true to execute after user confirmed the preview",
+          },
+          confirmation_id: {
+            type: "string",
+            description: "Confirmation ID from the preview response",
+          },
         },
         required: ["title", "start", "end"],
       },
@@ -641,19 +701,56 @@ const WorkAgentPlugin = {
           const end = (param(params, "end") as string) || "";
           if (!title || !start || !end) return err("title, start, and end are required");
 
+          const account = param(params, "account") as string | undefined;
+          const description = param(params, "description") as string | undefined;
+          const location = param(params, "location") as string | undefined;
+          const attendees = param(params, "attendees") as string[] | undefined;
+          const calendarId = (param(params, "calendar_id") as string) || "primary";
+
+          // Build canonical payload for confirmation hash
+          const payload: Record<string, unknown> = { title, start, end, calendar_id: calendarId };
+          if (account) payload.account = account;
+          if (description) payload.description = description;
+          if (location) payload.location = location;
+          if (attendees?.length) payload.attendees = attendees;
+          const cid = confirmationId(payload);
+
+          const confirmed = param(params, "confirmed") as boolean | undefined;
+          const providedCid = param(params, "confirmation_id") as string | undefined;
+
+          // Preview mode (default)
+          if (!confirmed) {
+            return ok({
+              preview: true,
+              confirmation_id: cid,
+              action: "schedule_meeting",
+              details: {
+                title,
+                start,
+                end,
+                calendar_id: calendarId,
+                account: account || "(default account)",
+                description: description || undefined,
+                location: location || undefined,
+                attendees: attendees?.length ? attendees : undefined,
+              },
+            });
+          }
+
+          // Confirmed — verify confirmation_id
+          if (providedCid !== cid) {
+            return err("confirmation_id mismatch — parameters changed since preview, please re-preview");
+          }
+
           const args: Record<string, unknown> = {
             summary: title,
             start_time: start,
             end_time: end,
-            calendar_id: (param(params, "calendar_id") as string) || "primary",
+            calendar_id: calendarId,
           };
-          const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const description = param(params, "description") as string | undefined;
           if (description) args.description = description;
-          const location = param(params, "location") as string | undefined;
           if (location) args.location = location;
-          const attendees = param(params, "attendees") as string[] | undefined;
           if (attendees?.length) args.attendees = attendees;
 
           const result = await mcpCall("create_calendar_event", args);
@@ -1043,7 +1140,7 @@ const WorkAgentPlugin = {
       name: "work_summarize_project",
       label: "Summarize Project",
       description:
-        "Gather messages from Gmail and Telegram for a project. Returns raw data for the agent to summarize.",
+        "Gather messages from Gmail, Telegram, and Drive for a project. Returns raw data for the agent to summarize.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -1064,37 +1161,30 @@ const WorkAgentPlugin = {
         const from = param(params, "from") as string | undefined;
         const to = param(params, "to") as string | undefined;
         const account = param(params, "account") as string | undefined;
-        const data: { gmail?: unknown; telegram?: unknown } = {};
 
-        // Gmail
-        try {
-          const gmailQuery = [
-            project,
-            from ? `after:${from}` : "",
-            to ? `before:${to}` : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          const args: Record<string, unknown> = {
-            query: gmailQuery,
-            max_results: 50,
-          };
-          if (account) args.account = account;
-          data.gmail = await mcpCall("query_gmail_emails", args);
-        } catch (e) {
-          data.gmail = { error: (e as Error).message };
-        }
+        const gmailQuery = [
+          project,
+          from ? `after:${from}` : "",
+          to ? `before:${to}` : "",
+        ].filter(Boolean).join(" ");
+        const gmailArgs: Record<string, unknown> = { query: gmailQuery, max_results: 50 };
+        if (account) gmailArgs.account = account;
 
-        // Telegram
-        try {
-          data.telegram = await queryMessages(project, {
-            from,
-            to,
-            limit: 50,
-          });
-        } catch (e) {
-          data.telegram = { error: (e as Error).message };
-        }
+        const driveQuery = `fullText contains '${project.replace(/'/g, "\\'")}'${from ? ` and modifiedTime > '${from.slice(0, 10)}T00:00:00'` : ""}`;
+        const driveArgs: Record<string, unknown> = { query: driveQuery, max_results: 10 };
+        if (account) driveArgs.account = account;
+
+        const [gmailResult, telegramResult, driveResult] = await Promise.allSettled([
+          mcpCall("query_gmail_emails", gmailArgs),
+          queryMessages(project, { from, to, limit: 50 }),
+          mcpCall("drive_search_files", driveArgs),
+        ]);
+
+        const data: { gmail?: unknown; telegram?: unknown; drive?: unknown } = {
+          gmail: gmailResult.status === "fulfilled" ? gmailResult.value : { error: (gmailResult.reason as Error).message },
+          telegram: telegramResult.status === "fulfilled" ? telegramResult.value : { error: (telegramResult.reason as Error).message },
+          drive: driveResult.status === "fulfilled" ? driveResult.value : { error: (driveResult.reason as Error).message },
+        };
 
         return ok(data, { project });
       },
@@ -1104,7 +1194,7 @@ const WorkAgentPlugin = {
       name: "work_weekly_report",
       label: "Weekly Report",
       description:
-        "Gather data from all sources (Gmail, Calendar, Telegram) for a weekly report. Returns raw data for the agent to format.",
+        "Gather data from all sources (Gmail, Calendar, Telegram, Drive) for a weekly report. Returns raw data for the agent to format.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -1150,40 +1240,34 @@ const WorkAgentPlugin = {
 
         const report: {
           period: { start: string; end: string };
-          projects: Record<string, { gmail?: unknown; telegram?: unknown }>;
+          projects: Record<string, { gmail?: unknown; telegram?: unknown; drive?: unknown }>;
           calendar?: unknown;
         } = {
           period: { start: weekStart, end: weekEnd },
           projects: {},
         };
 
-        // Per-project data
+        // Per-project data (parallelized per source)
         for (const project of projects) {
-          const projectData: { gmail?: unknown; telegram?: unknown } = {};
+          const gmailQuery = `${project} after:${weekStart.slice(0, 10)} before:${weekEnd.slice(0, 10)}`;
+          const gmailArgs: Record<string, unknown> = { query: gmailQuery, max_results: 50 };
+          if (account) gmailArgs.account = account;
 
-          try {
-            const gmailQuery = `${project} after:${weekStart.slice(0, 10)} before:${weekEnd.slice(0, 10)}`;
-            const args: Record<string, unknown> = {
-              query: gmailQuery,
-              max_results: 50,
-            };
-            if (account) args.account = account;
-            projectData.gmail = await mcpCall("query_gmail_emails", args);
-          } catch (e) {
-            projectData.gmail = { error: (e as Error).message };
-          }
+          const driveQuery = `fullText contains '${project.replace(/'/g, "\\'")}' and modifiedTime > '${weekStart.slice(0, 10)}T00:00:00'`;
+          const driveArgs: Record<string, unknown> = { query: driveQuery, max_results: 10 };
+          if (account) driveArgs.account = account;
 
-          try {
-            projectData.telegram = await queryMessages(project, {
-              from: weekStart,
-              to: weekEnd,
-              limit: 50,
-            });
-          } catch (e) {
-            projectData.telegram = { error: (e as Error).message };
-          }
+          const [gmailResult, telegramResult, driveResult] = await Promise.allSettled([
+            mcpCall("query_gmail_emails", gmailArgs),
+            queryMessages(project, { from: weekStart, to: weekEnd, limit: 50 }),
+            mcpCall("drive_search_files", driveArgs),
+          ]);
 
-          report.projects[project] = projectData;
+          report.projects[project] = {
+            gmail: gmailResult.status === "fulfilled" ? gmailResult.value : { error: (gmailResult.reason as Error).message },
+            telegram: telegramResult.status === "fulfilled" ? telegramResult.value : { error: (telegramResult.reason as Error).message },
+            drive: driveResult.status === "fulfilled" ? driveResult.value : { error: (driveResult.reason as Error).message },
+          };
         }
 
         // Calendar events for the week
