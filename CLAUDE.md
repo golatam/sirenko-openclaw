@@ -68,6 +68,12 @@ cd services/telegram-sidecar && python gen_session.py
 
 Переменные окружения — в Railway. Секреты (токены, API-ключи, session-строки) хранятся только в Railway variables, не коммитятся.
 
+## Git workflow
+
+- **Ветки**: `feature/<name>`, `fix/<name>` → PR → `main`
+- **Теги**: `vX.Y.Z` для версий деплоя (e.g. `v0.6.0`)
+- Railway деплоит автоматически из `main`
+
 ## Ключевые соглашения
 
 - Документация ведётся на русском
