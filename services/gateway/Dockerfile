@@ -4,10 +4,8 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g openclaw@2026.2.23 clawhub \
-  && LOBSTER_BIN=$(find /usr/local/lib/node_modules/openclaw -name lobster -type f -path '*/bin/*' 2>/dev/null | head -1) \
-  && if [ -n "$LOBSTER_BIN" ]; then ln -sf "$LOBSTER_BIN" /usr/local/bin/lobster && echo "[dockerfile] lobster CLI linked from $LOBSTER_BIN"; \
-     else echo "[dockerfile] lobster CLI not found in openclaw package — plugin will degrade gracefully"; fi
+RUN npm install -g openclaw@2026.2.23 clawhub @clawdbot/lobster@2026.1.24 \
+  && echo "[dockerfile] lobster CLI installed: $(lobster --version 2>&1 || echo 'version unknown')"
 
 WORKDIR /app
 COPY openclaw.json /app/openclaw.json

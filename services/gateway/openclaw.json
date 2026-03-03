@@ -13,6 +13,7 @@
     "enabled": true
   },
   "tools": {
+    "alsoAllow": ["lobster"],
     "media": {
       "audio": {
         "enabled": true,
@@ -76,6 +77,9 @@
         }
       },
       "memory-core": {
+        "enabled": true
+      },
+      "lobster": {
         "enabled": true
       }
     }

@@ -108,11 +108,12 @@ Gateway domain:
 - Персона: IDENTITY.md (мотиватор, без лести, краткость), USER.md (предпочтения, аккаунты)
 - Память по каналам: 1 Slack-канал = 1 папка в workspace (автосоздание при первом сообщении)
 - `work_get_channel_info` тул для определения текущего канала
-- `memory-lancedb` плагин включён — persistent memory (MEMORY.md + daily logs)
+- `memory-core` плагин включён — persistent memory (MEMORY.md + workspace files)
 - `HEARTBEAT.md` — стоячие инструкции (проверка срочной почты, напоминания о встречах)
 - Heartbeat запущен по умолчанию (~30 мин)
 - Cron-подсистема включена, 2 задачи: утренний брифинг (пн-пт 9:00 Madrid) + еженедельный отчёт (пт 16:00 Madrid)
 - Cron seed: `gateway/cron-seed.json` → volume `cron/jobs.json` (seed-only через entrypoint)
+- Lobster plugin включён: CLI `@clawdbot/lobster@2026.1.24` установлен в Dockerfile, `tools.alsoAllow: ["lobster"]` — typed workflows с approval gates
 
 ### Hardening (Phase 7)
 - Deep health checks: все 4 сервиса возвращают `{status, checks, uptime_seconds}` с реальной диагностикой

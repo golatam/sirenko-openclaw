@@ -90,7 +90,7 @@
 
 **Рассмотреть позже:**
 - `memory-lancedb` — auto-recall/auto-capture; требует OPENAI_API_KEY (text-embedding-3-small ~$0.02/1M tokens)
-- `lobster` — цепочки тулов с approval gates (inbox triage, weekly review pipeline)
+- [x] `lobster` — цепочки тулов с approval gates; CLI `@clawdbot/lobster@2026.1.24` установлен, `tools.alsoAllow` + `entries.lobster.enabled` (2026-03-03)
 - `whatsapp` — WhatsApp Business канал (Phase 2)
 
 **Не нужно:** остальные 30+ встроенных плагинов (Discord, Slack, IRC, Signal, Matrix, auth-провайдеры, voice-call, etc.)
