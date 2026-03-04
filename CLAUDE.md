@@ -26,11 +26,12 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 ## Persistent Storage
 
-Workspace агента живёт на Railway volume (`/data/openclaw-state/workspace`). Entrypoint использует два паттерна:
+Workspace агента живёт на Railway volume (`/data/openclaw-state/workspace`). Entrypoint использует три паттерна:
 - **Always-overwrite**: `IDENTITY.md`, `USER.md` — source of truth в git, перезаписываются при деплое
 - **Seed-only**: `HEARTBEAT.md` — копируется из image только если отсутствует на volume, агент может менять в runtime
+- **Merge**: `cron/jobs.json` — определения jobs из `cron-seed.json`, runtime state (`nextRunAtMs`, `lastRunAtMs` и т.д.) сохраняется из volume. Это критично для `runMissedJobs()` — без сохранённого state пропущенные jobs не обнаруживаются.
 
-Runtime-файлы (`MEMORY.md`, `memory/*.md`) переживают деплои. `cron/jobs.json` синхронизируется из `services/gateway/cron-seed.json` через entrypoint (always-overwrite: перезаписывается при каждом деплое для применения изменений формата/расписания).
+Runtime-файлы (`MEMORY.md`, `memory/*.md`) переживают деплои.
 
 ## Плагины
 

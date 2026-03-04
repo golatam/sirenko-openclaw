@@ -25,10 +25,37 @@ for f in HEARTBEAT.md; do
   fi
 done
 
-# --- Sync cron jobs (always overwrite from image to apply format fixes) ---
+# --- Sync cron jobs (merge: update definitions from seed, preserve runtime state) ---
 mkdir -p "$STATE_DIR/cron"
-cp /app/cron-seed.json "$STATE_DIR/cron/jobs.json"
-echo "[entrypoint] Synced cron/jobs.json"
+CRON_STORE="$STATE_DIR/cron/jobs.json"
+if [ -f "$CRON_STORE" ]; then
+  # Merge seed into existing store: take job definitions from seed,
+  # but preserve state/timestamps from the runtime store so that
+  # runMissedJobs() can detect and catch up on missed schedules.
+  node -e '
+    const fs = require("fs");
+    const seed = JSON.parse(fs.readFileSync("/app/cron-seed.json", "utf-8"));
+    const store = JSON.parse(fs.readFileSync(process.argv[1], "utf-8"));
+    const storeMap = new Map((store.jobs || []).map(j => [j.id, j]));
+    const merged = (seed.jobs || []).map(seedJob => {
+      const existing = storeMap.get(seedJob.id);
+      if (!existing) return seedJob;
+      // Keep runtime state and timestamps, overwrite everything else from seed
+      return {
+        ...seedJob,
+        state: existing.state || {},
+        createdAtMs: existing.createdAtMs,
+        updatedAtMs: existing.updatedAtMs
+      };
+    });
+    const out = { version: 1, jobs: merged };
+    fs.writeFileSync(process.argv[1], JSON.stringify(out, null, 2));
+  ' "$CRON_STORE"
+  echo "[entrypoint] Merged cron/jobs.json (preserved runtime state)"
+else
+  cp /app/cron-seed.json "$CRON_STORE"
+  echo "[entrypoint] Seeded cron/jobs.json (first run)"
+fi
 
 echo "[entrypoint] Workspace on persistent volume: $PERSIST_WORKSPACE"
 
