@@ -198,3 +198,27 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [x] `scripts/pg-backup.sh` — pg_dump + gzip, 7-day retention (2026-03-03)
 
 Не вошло (overkill для текущего масштаба): centralized logging, Grafana/metrics, UptimeRobot
+
+## Phase 8 — Аналитика, финансы и бэкапы
+
+### 8a — Amplitude MCP Server
+- [ ] Подключить Amplitude MCP Server к gateway (аналитика продуктов)
+- [ ] Добавить тулы для агента: просмотр чартов, когорт, дашбордов, query по данным
+- [ ] Настроить env vars (`AMPLITUDE_API_KEY`, etc.) в Railway
+
+### 8b — Google Analytics MCP Server
+- [ ] Подключить Google Analytics MCP Server к gateway
+- [ ] Тулы для агента: отчёты по трафику, конверсиям, аудиториям
+- [ ] OAuth credentials — возможно расширить существующие scopes в google-mcp-sidecar или отдельный сервер
+
+### 8c — Финансовый скилл
+- [ ] Ресёрч: какие MCP-серверы / API подходят для ведения финансов (учёт расходов, инвойсы, банковские выписки)
+- [ ] Варианты: интеграция с банковским API, Google Sheets как БД, специализированный сервис (Plaid, Mercury, etc.)
+- [ ] Определить scope: личные финансы, бизнес-финансы, или оба
+
+### 8d — Резервные копии (память и критичные данные)
+- [ ] Определить что бэкапить: память агента (`MEMORY.md`, `memory/*.md`), PostgreSQL (messages, accounts), auth state (WhatsApp, Telegram sessions)
+- [ ] Организовать автоматический бэкап памяти агента (сейчас только на Railway volume — single point of failure)
+- [ ] Расширить `scripts/pg-backup.sh` — автоматический запуск по cron (Railway cron job или внешний)
+- [ ] Стратегия хранения: S3/R2, Google Drive, или GitHub (приватный репо)
+- [ ] Восстановление: документировать процедуру восстановления из бэкапа

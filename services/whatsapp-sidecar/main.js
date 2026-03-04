@@ -8,6 +8,7 @@ import makeWASocket, {
 import pino from "pino";
 import pg from "pg";
 import { createServer } from "node:http";
+import { readdirSync, rmSync, existsSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -26,6 +27,8 @@ const SKIP_FROM_ME = process.env.WA_SKIP_FROM_ME !== "0"; // skip own messages b
 const SYNC_HISTORY = process.env.WA_SYNC_HISTORY === "1"; // ingest history sync messages
 
 const logger = pino({ level: process.env.LOG_LEVEL || "warn" });
+
+const FORCE_REAUTH = process.env.WA_FORCE_REAUTH === "1";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
@@ -367,17 +370,27 @@ const server = createServer(async (req, res) => {
   }
   if (req.method === "GET" && req.url === "/qr") {
     if (isConnected) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "connected", qr: null }));
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end("<html><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>WhatsApp Connected</h1><p>Already paired and running.</p></body></html>");
       return;
     }
     if (lastQr) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "awaiting_qr", qr: lastQr }));
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<html><head>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"></script>
+</head><body style="font-family:sans-serif;text-align:center;padding:40px">
+<h1>WhatsApp QR Code</h1>
+<p>Scan with WhatsApp &rarr; Linked Devices &rarr; Link a Device</p>
+<canvas id="qr"></canvas>
+<p style="color:#888;font-size:12px">Auto-refreshes every 10s</p>
+<script>
+QRCode.toCanvas(document.getElementById('qr'),${JSON.stringify(lastQr)},{width:400,margin:2});
+setTimeout(()=>location.reload(),10000);
+</script></body></html>`);
       return;
     }
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "no_qr", qr: null }));
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end("<html><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>No QR Yet</h1><p>Waiting for QR code generation... Refresh in a few seconds.</p><script>setTimeout(()=>location.reload(),3000)</script></body></html>");
     return;
   }
   res.writeHead(404);
@@ -390,6 +403,16 @@ const server = createServer(async (req, res) => {
 
 async function main() {
   await ensureSchema();
+
+  // Clear auth state if force reauth is requested
+  if (FORCE_REAUTH && existsSync(AUTH_DIR)) {
+    console.error("[WA] WA_FORCE_REAUTH=1 — clearing auth state for re-pairing...");
+    for (const f of readdirSync(AUTH_DIR)) {
+      rmSync(`${AUTH_DIR}/${f}`, { recursive: true, force: true });
+    }
+    console.error("[WA] Auth state cleared. Will generate new QR code.");
+  }
+
   console.error(`[WA] Account label: ${ACCOUNT_LABEL}`);
   console.error(`[WA] Auth dir: ${AUTH_DIR}`);
   console.error(`[WA] Skip own messages: ${SKIP_FROM_ME}`);
