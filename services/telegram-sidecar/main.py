@@ -210,13 +210,21 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
         msg = (
             f"[TG] {account.label} ({account.phone}) requires re-authorization! "
             "Run gen_session.py locally to generate a new StringSession, "
-            f"then update TG{account.label[-1]}_SESSION in Railway env vars."
+            f"then update the corresponding TGx_SESSION in Railway env vars."
         )
         print(msg, flush=True, file=sys.stderr)
         raise RuntimeError(f"{account.label} session expired — re-auth needed (see logs)")
 
     try:
-        await client.start(phone=account.phone, code_callback=_code_callback)
+        print(f"[TG] {account.label} connecting...", flush=True, file=sys.stderr)
+        await asyncio.wait_for(
+            client.start(phone=account.phone, code_callback=_code_callback),
+            timeout=60,
+        )
+    except asyncio.TimeoutError:
+        print(f"[TG] FAILED to start {account.label} ({account.phone}): connection timeout (60s)", flush=True, file=sys.stderr)
+        _client_status[account.label] = "failed"
+        return
     except Exception as e:
         print(f"[TG] FAILED to start {account.label} ({account.phone}): {e}", flush=True, file=sys.stderr)
         _client_status[account.label] = "failed"
