@@ -542,7 +542,7 @@ def _normalize_args_app(inner):
                 if failed:
                     checks["accounts"] = {"status": "degraded", "details": f"{len(failed)}/{len(account_details)} accounts unhealthy", "accounts": account_details}
                 else:
-                    checks["accounts"] = {"status": "ok", "count": len(account_details)}
+                    checks["accounts"] = {"status": "ok", "count": len(account_details), "accounts": account_details}
 
             uptime = int(time.monotonic() - _start_time)
             body = json.dumps({

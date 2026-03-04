@@ -203,8 +203,18 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
         session_name = os.path.join(session_dir, session_name)
     session = StringSession(account.session) if account.session else session_name
     client = TelegramClient(session, account.api_id, account.api_hash)
+
+    def _code_callback():
+        msg = (
+            f"[TG] {account.label} ({account.phone}) requires re-authorization! "
+            "Run gen_session.py locally to generate a new StringSession, "
+            f"then update TG{account.label[-1]}_SESSION in Railway env vars."
+        )
+        print(msg, flush=True, file=sys.stderr)
+        raise RuntimeError(f"{account.label} session expired — re-auth needed (see logs)")
+
     try:
-        await client.start(phone=account.phone)
+        await client.start(phone=account.phone, code_callback=_code_callback)
     except Exception as e:
         print(f"[TG] FAILED to start {account.label} ({account.phone}): {e}", flush=True, file=sys.stderr)
         _client_status[account.label] = "failed"
@@ -379,11 +389,13 @@ async def handle_health(request: web.Request) -> web.Response:
         overall = "error"
     elif connected < total:
         disconnected = [label for label, s in _client_status.items() if s != "connected"]
-        checks["accounts"] = {"status": "degraded", "details": f"{disconnected} not connected", "connected": connected, "total": total}
+        accounts_list = [{"account": label, "status": s} for label, s in _client_status.items()]
+        checks["accounts"] = {"status": "degraded", "details": f"{disconnected} not connected", "connected": connected, "total": total, "accounts": accounts_list}
         if overall == "ok":
             overall = "degraded"
     else:
-        checks["accounts"] = {"status": "ok", "connected": connected, "total": total}
+        accounts_list = [{"account": label, "status": s} for label, s in _client_status.items()]
+        checks["accounts"] = {"status": "ok", "connected": connected, "total": total, "accounts": accounts_list}
 
     uptime = int(time.monotonic() - _start_time)
     return web.json_response({
