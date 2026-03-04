@@ -222,3 +222,22 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [ ] Расширить `scripts/pg-backup.sh` — автоматический запуск по cron (Railway cron job или внешний)
 - [ ] Стратегия хранения: S3/R2, Google Drive, или GitHub (приватный репо)
 - [ ] Восстановление: документировать процедуру восстановления из бэкапа
+
+## Phase 9 — Security & Reliability
+
+Источник: аудит Codex (gpt-5.3-codex) от 2026-03-03.
+
+### 9a — Баги (Low effort)
+- [ ] Починить `work_list_calendars` — вызывает `calendar_get_events` вместо списка календарей (`index.ts:367-387`)
+- [ ] Починить WhatsApp health status — `status:error` показывает `overall=degraded` вместо `error` (`main.js:354`)
+
+### 9b — Security Hardening
+- [ ] Host validation: заменить глобальный bypass `_validate_host` на allowlist (`*.railway.internal`, Railway public URLs) (`server.py:618`)
+- [ ] `/qr` endpoint: добавить auth token или отключить в production (`main.js:368`)
+- [ ] Sidecar API auth: `X-Internal-Token` header middleware на `/search` и `/health` (telegram-sidecar + whatsapp-sidecar + google-mcp-sidecar)
+- [ ] Account fallback: возвращать `400 account_not_found` вместо fallback на первый аккаунт (`server.py:81`)
+
+### 9c — Reliability
+- [ ] Message dedup: `UNIQUE(source, external_id)` constraint + `ON CONFLICT DO NOTHING` (`schema.sql`, `main.py`, `main.js`)
+- [ ] Telethon task supervision: supervisor loop с автоперезапуском + exponential backoff (`main.py:466`)
+- [ ] Graceful shutdown: SIGTERM handlers для DB pool и pending tasks (все сайдкары)
