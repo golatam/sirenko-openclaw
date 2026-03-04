@@ -1,41 +1,53 @@
-[
-  {
-    "id": "morning-briefing",
-    "name": "Morning Briefing",
-    "enabled": true,
-    "schedule": {
-      "kind": "cron",
-      "expr": "0 9 * * 1-5",
-      "tz": "Europe/Madrid"
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "morning-briefing",
+      "name": "Morning Briefing",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 1-5",
+        "tz": "Europe/Madrid"
+      },
+      "sessionTarget": "isolated",
+      "delivery": { "mode": "none" },
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Сейчас утро рабочего дня. Подготовь утренний брифинг для Кирилла.\n\n1. Проверь календарь на сегодня по всем 3 аккаунтам (kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online) — используй work_list_events с time_min=сегодня 00:00 и time_max=сегодня 23:59.\n2. Проверь непрочитанные важные письма за последние 12 часов по всем аккаунтам — используй work_search с query=\"is:unread is:important\" channel=gmail.\n3. Загляни в свою память — есть ли задачи или напоминания на сегодня.\n\nСформируй краткий брифинг в формате:\n- Встречи сегодня (время, название, с кем)\n- Важные письма (от кого, тема, суть)\n- Задачи/напоминания\n\nОтправь брифинг через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\"). Используй Slack mrkdwn форматирование."
+      }
     },
-    "sessionTarget": "isolated",
-    "delivery": { "mode": "none" },
-    "message": "Сейчас утро рабочего дня. Подготовь утренний брифинг для Кирилла.\n\n1. Проверь календарь на сегодня по всем 3 аккаунтам (kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online) — используй work_list_events с time_min=сегодня 00:00 и time_max=сегодня 23:59.\n2. Проверь непрочитанные важные письма за последние 12 часов по всем аккаунтам — используй work_search с query=\"is:unread is:important\" channel=gmail.\n3. Загляни в свою память — есть ли задачи или напоминания на сегодня.\n\nСформируй краткий брифинг в формате:\n- Встречи сегодня (время, название, с кем)\n- Важные письма (от кого, тема, суть)\n- Задачи/напоминания\n\nОтправь брифинг через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\"). Используй Slack mrkdwn форматирование."
-  },
-  {
-    "id": "weekly-report",
-    "name": "Weekly Report",
-    "enabled": true,
-    "schedule": {
-      "kind": "cron",
-      "expr": "0 16 * * 5",
-      "tz": "Europe/Madrid"
+    {
+      "id": "weekly-report",
+      "name": "Weekly Report",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 16 * * 5",
+        "tz": "Europe/Madrid"
+      },
+      "sessionTarget": "isolated",
+      "delivery": { "mode": "none" },
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Сейчас пятница. Подготовь еженедельный отчёт для Кирилла.\n\n1. Используй work_weekly_report с projects: [\"dolphin\", \"flexify\", \"petproject\", \"karelia\"] — это соберёт данные из Gmail, Calendar и Telegram за текущую неделю.\n2. Загляни в свою память — что было важного на этой неделе, какие решения приняты.\n3. Проверь usage через work_usage_summary за 7 дней.\n\nСформируй отчёт в формате:\n- Итоги по каждому проекту (ключевые письма, встречи, решения)\n- Общая статистика (сколько писем, встреч, сообщений)\n- Расход токенов и стоимость за неделю\n- Планы/задачи на следующую неделю (из памяти)\n\nОтправь отчёт через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\"). Используй Slack mrkdwn форматирование."
+      }
     },
-    "sessionTarget": "isolated",
-    "delivery": { "mode": "none" },
-    "message": "Сейчас пятница. Подготовь еженедельный отчёт для Кирилла.\n\n1. Используй work_weekly_report с projects: [\"dolphin\", \"flexify\", \"petproject\", \"karelia\"] — это соберёт данные из Gmail, Calendar и Telegram за текущую неделю.\n2. Загляни в свою память — что было важного на этой неделе, какие решения приняты.\n3. Проверь usage через work_usage_summary за 7 дней.\n\nСформируй отчёт в формате:\n- Итоги по каждому проекту (ключевые письма, встречи, решения)\n- Общая статистика (сколько писем, встреч, сообщений)\n- Расход токенов и стоимость за неделю\n- Планы/задачи на следующую неделю (из памяти)\n\nОтправь отчёт через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\"). Используй Slack mrkdwn форматирование."
-  },
-  {
-    "id": "health-check",
-    "name": "System Health Check",
-    "enabled": true,
-    "schedule": {
-      "kind": "cron",
-      "expr": "*/30 * * * *",
-      "tz": "Europe/Madrid"
-    },
-    "sessionTarget": "isolated",
-    "delivery": { "mode": "none" },
-    "message": "Выполни проверку здоровья системы.\n\n1. Вызови work_health_check — это проверит все компоненты (Google MCP, Telegram sidecar, WhatsApp sidecar).\n2. Если общий статус 'degraded' или 'error' — отправь алерт через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\") с деталями какой компонент сломался.\n3. Если всё ok — НЕ отправляй ничего (не спами).\n\nФормат алерта:\n⚠️ *System Health Alert*\nStatus: [degraded/error]\n[Детали по каждому проблемному компоненту]\nTime: [текущее время]"
-  }
-]
+    {
+      "id": "health-check",
+      "name": "System Health Check",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "*/30 * * * *",
+        "tz": "Europe/Madrid"
+      },
+      "sessionTarget": "isolated",
+      "delivery": { "mode": "none" },
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Выполни проверку здоровья системы.\n\n1. Вызови work_health_check — это проверит все компоненты (Google MCP, Telegram sidecar, WhatsApp sidecar).\n2. Если общий статус 'degraded' или 'error' — отправь алерт через work_slack_send(user_email: \"kirill@sirenko.ru\", text: \"...\") с деталями какой компонент сломался.\n3. Если всё ok — НЕ отправляй ничего (не спами).\n\nФормат алерта:\n⚠️ *System Health Alert*\nStatus: [degraded/error]\n[Детали по каждому проблемному компоненту]\nTime: [текущее время]"
+      }
+    }
+  ]
+}

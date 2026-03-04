@@ -25,12 +25,10 @@ for f in HEARTBEAT.md; do
   fi
 done
 
-# --- Seed cron jobs ---
+# --- Sync cron jobs (always overwrite from image to apply format fixes) ---
 mkdir -p "$STATE_DIR/cron"
-if [ ! -f "$STATE_DIR/cron/jobs.json" ]; then
-  cp /app/cron-seed.json "$STATE_DIR/cron/jobs.json"
-  echo "[entrypoint] Seeded cron/jobs.json"
-fi
+cp /app/cron-seed.json "$STATE_DIR/cron/jobs.json"
+echo "[entrypoint] Synced cron/jobs.json"
 
 echo "[entrypoint] Workspace on persistent volume: $PERSIST_WORKSPACE"
 

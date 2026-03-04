@@ -22,7 +22,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 5. **PostgreSQL** — общий на Railway. Схема в `services/telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
 
-Плагин (`services/gateway/work-agent/index.ts`) регистрирует 13 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
+Плагин (`services/gateway/work-agent/index.ts`) регистрирует 14 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. Тулы вызывают google-mcp-sidecar через HTTP fetch() с 30s таймаутом (JSON-RPC 2.0) и Telegram-данные из PostgreSQL.
 
 ## Persistent Storage
 
@@ -30,12 +30,12 @@ Workspace агента живёт на Railway volume (`/data/openclaw-state/wor
 - **Always-overwrite**: `IDENTITY.md`, `USER.md` — source of truth в git, перезаписываются при деплое
 - **Seed-only**: `HEARTBEAT.md` — копируется из image только если отсутствует на volume, агент может менять в runtime
 
-Runtime-файлы (`MEMORY.md`, `memory/*.md`, `cron/jobs.json`) переживают деплои. `cron/jobs.json` сидируется из `services/gateway/cron-seed.json` через entrypoint (seed-only: только если файл отсутствует на volume).
+Runtime-файлы (`MEMORY.md`, `memory/*.md`) переживают деплои. `cron/jobs.json` синхронизируется из `services/gateway/cron-seed.json` через entrypoint (always-overwrite: перезаписывается при каждом деплое для применения изменений формата/расписания).
 
 ## Плагины
 
-Включены: `work-agent` (кастомный), `telegram` (канал), `memory-lancedb` (vector memory, auto-recall/auto-capture, Gemini embeddings).
-Cron-подсистема включена: утренний брифинг (пн-пт 9:00 Madrid) + еженедельный отчёт (пт 16:00 Madrid). Heartbeat работает по умолчанию.
+Включены: `work-agent` (кастомный), `telegram` (канал), `memory-core` (файловая память + Gemini vector search), `lobster` (workflow chains).
+Cron-подсистема включена: утренний брифинг (пн-пт 9:00 Madrid) + еженедельный отчёт (пт 16:00 Madrid) + health check (каждые 30 мин). Формат `cron-seed.json`: `{ "version": 1, "jobs": [...] }`. Heartbeat работает по умолчанию.
 
 ## Разработка
 

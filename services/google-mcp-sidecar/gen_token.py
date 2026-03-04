@@ -29,6 +29,7 @@ SCOPES = [
 ]
 
 def main():
+    os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
     client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or input("Client ID: ").strip()
     client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET") or input("Client Secret: ").strip()
 
@@ -36,18 +37,20 @@ def main():
         print("Error: client_id and client_secret are required")
         sys.exit(1)
 
+    port = int(os.environ.get("GEN_TOKEN_PORT", "8080"))
+
     client_config = {
         "installed": {
             "client_id": client_id,
             "client_secret": client_secret,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": ["http://localhost:8080"],
+            "redirect_uris": [f"http://localhost:{port}"],
         }
     }
 
     flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
-    creds = flow.run_local_server(port=8080, prompt="consent", access_type="offline")
+    creds = flow.run_local_server(port=port, prompt="consent", access_type="offline", redirect_uri_trailing_slash=False)
 
     print("\n" + "=" * 60)
     print("Refresh Token (copy this):")
