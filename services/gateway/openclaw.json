@@ -53,7 +53,8 @@
       "channels": {
         "*": { "requireMention": false }
       },
-      "nativeStreaming": true
+      "nativeStreaming": true,
+      "replyToMode": "all"
     }
   },
   "plugins": {
