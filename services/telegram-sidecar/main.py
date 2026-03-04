@@ -53,9 +53,10 @@ def get_accounts() -> list[AccountConfig]:
         phone = os.getenv(f"TG{i}_PHONE")
         session = os.getenv(f"TG{i}_SESSION")
         if api_id and api_hash and phone:
+            label = os.getenv(f"TG{i}_LABEL", f"tg{i}")
             accounts.append(
                 AccountConfig(
-                    label=f"tg{i}",
+                    label=label,
                     api_id=api_id,
                     api_hash=api_hash,
                     phone=phone,
@@ -73,9 +74,10 @@ async def ensure_account_row(pool: asyncpg.Pool, account: AccountConfig) -> None
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO accounts (source, label, identity, status)
-            VALUES ('telegram', $1, $2, 'active')
-            ON CONFLICT DO NOTHING
+            INSERT INTO accounts (source, label, identity, status, updated_at)
+            VALUES ('telegram', $1, $2, 'active', NOW())
+            ON CONFLICT (source, label) DO UPDATE
+              SET identity = EXCLUDED.identity, status = 'active', updated_at = NOW()
             """,
             account.label,
             account.phone,

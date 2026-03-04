@@ -179,7 +179,7 @@ function formatHealthMessage(result: HealthResult, kind: AlertKind): string {
       const accts = checks.accounts;
       const list = accts.accounts as Array<Record<string, string>> | undefined;
       if (list) {
-        detail = list.map(a => `${a.status === "ok" ? "\u2713" : "\u2717"} ${a.account}`).join(", ");
+        detail = list.map(a => `${a.status === "connected" ? "\u2713" : "\u2717"} ${a.account}`).join(", ");
       } else if (accts.connected !== undefined) {
         detail = `${accts.connected}/${accts.total} connected`;
       }

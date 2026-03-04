@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   identity TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (source, label)
 );
 
 CREATE TABLE IF NOT EXISTS messages (
