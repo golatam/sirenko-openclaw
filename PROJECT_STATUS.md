@@ -19,7 +19,7 @@ See: `ARCHITECTURE.md`
 Project: `openclaw-work-agent`
 Services:
 - `gateway` (OpenClaw Gateway v2026.3.2 + work-agent plugin + memory-core)
-- `google-mcp-sidecar` (FastMCP, 9 тулов, мультиаккаунт)
+- `google-mcp-sidecar` (FastMCP, 19 тулов, мультиаккаунт)
 - `telegram-sidecar` (Telethon MTProto ingestion + HTTP search API)
 - `whatsapp-sidecar` (Baileys ingestion → PostgreSQL, source-agnostic search через telegram-sidecar)
 - `Postgres`
@@ -47,7 +47,7 @@ Gateway domain:
 
 ### Google Workspace
 - `google-mcp-sidecar/` — свой MCP-сервер: FastMCP + google-api-python-client
-- 7 MCP-тулов с мультиаккаунтом: Gmail (query, details, send), Calendar (list, create), Drive (search, read)
+- 19 MCP-тулов с мультиаккаунтом: Gmail (3), Calendar (3), Drive (4), Sheets (4), Docs (3), Analytics (2)
 - `GOOGLE_WORKSPACE_ACCOUNTS` JSON → per-account OAuth credentials с кэшированием
 - `requirements.txt` с pinned-версиями зависимостей
 - MCP Streamable HTTP: JSON responses, session management

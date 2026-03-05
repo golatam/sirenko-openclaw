@@ -18,7 +18,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 3. **WhatsApp Sidecar** (`services/whatsapp-sidecar/`) — Node.js 22, @whiskeysockets/baileys. Подключается к WhatsApp через QR-код (Linked Devices), пишет сообщения в ту же таблицу `messages` (`source='whatsapp'`). Только ingestion, поиск через telegram-sidecar. Точка входа: `main.js`.
 
-4. **Google MCP Sidecar** (`services/google-mcp-sidecar/`) — Python 3.12, FastMCP + google-api-python-client. Gmail, Calendar, Drive через MCP (JSON-RPC 2.0, Streamable HTTP). Мультиаккаунт через `GOOGLE_WORKSPACE_ACCOUNTS` JSON. Порт 8000. Зависимости: `requirements.txt`.
+4. **Google MCP Sidecar** (`services/google-mcp-sidecar/`) — Python 3.12, FastMCP + google-api-python-client. Gmail, Calendar, Drive, Sheets, Docs, Analytics через MCP (JSON-RPC 2.0, Streamable HTTP). 19 тулов, мультиаккаунт через `GOOGLE_WORKSPACE_ACCOUNTS` JSON. Порт 8000. Зависимости: `requirements.txt`.
 
 5. **Amplitude** — подключение к официальному hosted MCP-серверу (`https://mcp.amplitude.com/mcp`) через OAuth 2.0 Bearer token. 25+ тулов (analytics, charts, cohorts, dashboards, experiments и др.). Auth: OAuth PKCE (Dynamic Client Registration), auto-refresh при 401. Токен-скрипт: `scripts/gen_amplitude_token.py`. Кастомный сайдкар (`services/amplitude-mcp-sidecar/`) сохранён в репо, но не деплоится.
 
