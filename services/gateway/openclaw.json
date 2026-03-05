@@ -79,7 +79,9 @@
           "amplitudeOAuthClientId": "${AMPLITUDE_OAUTH_CLIENT_ID}",
           "amplitudeOAuthAccessToken": "${AMPLITUDE_OAUTH_ACCESS_TOKEN}",
           "amplitudeOAuthRefreshToken": "${AMPLITUDE_OAUTH_REFRESH_TOKEN}",
-          "sidecarAuthToken": "${SIDECAR_AUTH_TOKEN}"
+          "sidecarAuthToken": "${SIDECAR_AUTH_TOKEN}",
+          "databaseUrl": "${DATABASE_URL}",
+          "whatsappSidecarUrl": "${WHATSAPP_SIDECAR_URL}"
         }
       },
       "memory-core": {

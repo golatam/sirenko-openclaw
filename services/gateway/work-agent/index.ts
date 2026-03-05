@@ -9,6 +9,8 @@ import { dirname } from "path";
 let _tgSidecarUrl: string | undefined;
 let _tavilyApiKey: string | undefined;
 let _sidecarAuthToken: string | undefined;
+let _databaseUrl: string | undefined;
+let _whatsappSidecarUrl: string | undefined;
 let _googleMcp: McpClient | undefined;
 let _amplitudeMcp: McpClient | undefined;
 
@@ -151,7 +153,7 @@ async function probeAllSidecars(): Promise<HealthResult> {
     setWorst("error");
   }
 
-  const waSidecarUrl = process.env.WHATSAPP_SIDECAR_URL;
+  const waSidecarUrl = _whatsappSidecarUrl;
   if (waSidecarUrl) {
     probes.push(probeHealth(waSidecarUrl, "whatsapp_sidecar"));
   } else {
@@ -384,7 +386,9 @@ const WorkAgentPlugin = {
     _tgSidecarUrl = config.telegramSidecarUrl;
     _tavilyApiKey = config.tavilyApiKey;
     _sidecarAuthToken = config.sidecarAuthToken;
-    console.error(`[work-agent] googleMcp=${config.mcpServerUrl} amplitudeMcp=${_amplitudeMcp ? "configured" : "not set"} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"}`);
+    _databaseUrl = config.databaseUrl;
+    _whatsappSidecarUrl = config.whatsappSidecarUrl;
+    console.error(`[work-agent] googleMcp=${config.mcpServerUrl} amplitudeMcp=${_amplitudeMcp ? "configured" : "not set"} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"} dbUrl=${_databaseUrl ? "configured" : "not set"} waUrl=${_whatsappSidecarUrl ? "configured" : "not set"}`);
 
     // Alias for readability in tool handlers
     const googleMcp = _googleMcp;
@@ -1117,9 +1121,9 @@ const WorkAgentPlugin = {
       async execute() {
         try {
           const backupConfig: BackupConfig = {
-            dbUrl: process.env.DATABASE_URL || "",
+            dbUrl: _databaseUrl || "",
             workspaceDir: "/data/openclaw-state/workspace",
-            waUrl: process.env.WHATSAPP_SIDECAR_URL,
+            waUrl: _whatsappSidecarUrl,
             sidecarAuthToken: _sidecarAuthToken,
             account: BACKUP_ACCOUNT,
             retentionDays: BACKUP_RETENTION_DAYS,
@@ -1495,8 +1499,7 @@ const WorkAgentPlugin = {
           return;
         }
 
-        const dbUrl = process.env.DATABASE_URL;
-        if (!dbUrl) {
+        if (!_databaseUrl) {
           console.error("[work-agent] backup: DATABASE_URL not set, skipping");
           return;
         }
@@ -1507,9 +1510,9 @@ const WorkAgentPlugin = {
 
         console.error("[work-agent] backup: starting scheduled backup...");
         const backupConfig: BackupConfig = {
-          dbUrl,
+          dbUrl: _databaseUrl,
           workspaceDir: "/data/openclaw-state/workspace",
-          waUrl: process.env.WHATSAPP_SIDECAR_URL,
+          waUrl: _whatsappSidecarUrl,
           sidecarAuthToken: _sidecarAuthToken,
           account: BACKUP_ACCOUNT,
           retentionDays: BACKUP_RETENTION_DAYS,
