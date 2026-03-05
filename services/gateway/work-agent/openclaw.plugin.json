@@ -37,6 +37,14 @@
       "amplitudeOAuthRefreshToken": {
         "type": "string",
         "description": "OAuth refresh_token for Amplitude MCP server"
+      },
+      "databaseUrl": {
+        "type": "string",
+        "description": "PostgreSQL connection string for direct DB access (pg_dump, etc.)"
+      },
+      "whatsappSidecarUrl": {
+        "type": "string",
+        "description": "URL of whatsapp-sidecar HTTP API (e.g. http://whatsapp-sidecar.railway.internal:8080)"
       }
     }
   },
