@@ -17,6 +17,10 @@
       "tavilyApiKey": {
         "type": "string",
         "description": "Tavily API key for web search (falls back to TAVILY_API_KEY env var)"
+      },
+      "amplitudeMcpUrl": {
+        "type": "string",
+        "description": "URL of amplitude-mcp-sidecar (falls back to AMPLITUDE_MCP_URL env var)"
       }
     }
   },
@@ -32,6 +36,10 @@
     "tavilyApiKey": {
       "label": "Tavily API Key",
       "help": "API key from app.tavily.com for web search"
+    },
+    "amplitudeMcpUrl": {
+      "label": "Amplitude MCP Server URL",
+      "help": "HTTP endpoint of the amplitude-mcp-sidecar service"
     }
   }
 }

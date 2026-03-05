@@ -1,29 +1,9 @@
-import { fetchWithTimeout, sleep, MCP_TIMEOUT_MS } from "./utils.js";
+import { fetchWithTimeout, MCP_TIMEOUT_MS } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // MCP client — lightweight JSON-RPC 2.0 over HTTP (Node.js 22 native fetch)
+// Supports multiple independent MCP server connections via class instances.
 // ---------------------------------------------------------------------------
-
-let _mcpUrl: string | undefined;
-let _mcpSessionId: string | undefined;
-let _mcpInitPromise: Promise<void> | undefined;
-let _mcpAuthToken: string | undefined;
-
-/** Set the MCP server URL. Must be called before any mcpCall(). */
-export function configureMcp(url: string, authToken?: string): void {
-  _mcpUrl = url;
-  _mcpAuthToken = authToken;
-}
-
-/** Get the configured MCP server URL (for health checks). */
-export function getMcpUrl(): string | undefined {
-  return _mcpUrl;
-}
-
-function mcpUrl(): string {
-  if (!_mcpUrl) throw new Error("mcpServerUrl is not configured");
-  return _mcpUrl;
-}
 
 /** Parse MCP response that may be JSON or SSE (text/event-stream). */
 async function parseMcpBody(res: Response): Promise<{ result?: unknown; error?: { message: string } }> {
@@ -43,90 +23,108 @@ async function parseMcpBody(res: Response): Promise<{ result?: unknown; error?: 
   return res.json();
 }
 
-function authHeaders(): Record<string, string> {
-  const h: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json, text/event-stream",
-  };
-  if (_mcpAuthToken) h["X-Internal-Token"] = _mcpAuthToken;
-  return h;
-}
+export class McpClient {
+  private name: string;
+  private url: string;
+  private sessionId?: string;
+  private initPromise?: Promise<void>;
+  private authToken?: string;
 
-async function mcpInit(): Promise<void> {
-  const res = await fetchWithTimeout(`${mcpUrl()}/mcp`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "work-agent-plugin", version: "1.0.0" },
-      },
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`MCP init HTTP ${res.status}: ${await res.text()}`);
+  constructor(name: string, url: string, authToken?: string) {
+    this.name = name;
+    this.url = url;
+    this.authToken = authToken;
   }
-  const sid = res.headers.get("mcp-session-id");
-  if (sid) _mcpSessionId = sid;
-  // Read body to completion (may be JSON or SSE)
-  await parseMcpBody(res);
-}
 
-async function ensureMcpSession(): Promise<void> {
-  if (_mcpSessionId) return;
-  if (!_mcpInitPromise) {
-    _mcpInitPromise = mcpInit()
-      .then(() => {
-        console.error("[work-agent] MCP session initialized, sessionId:", _mcpSessionId);
-      })
-      .catch((e) => {
-        console.error("[work-agent] MCP init failed:", (e as Error).message);
-        _mcpInitPromise = undefined;
-        throw e;
-      });
+  getUrl(): string {
+    return this.url;
   }
-  await _mcpInitPromise;
-}
 
-export async function mcpCall(toolName: string, args: Record<string, unknown> = {}) {
-  await ensureMcpSession();
+  private headers(): Record<string, string> {
+    const h: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    };
+    if (this.authToken) h["X-Internal-Token"] = this.authToken;
+    return h;
+  }
 
-  const doCall = async (): Promise<Response> => {
-    const hdrs = authHeaders();
-    if (_mcpSessionId) hdrs["Mcp-Session-Id"] = _mcpSessionId;
-    return fetchWithTimeout(`${mcpUrl()}/mcp`, {
+  private async init(): Promise<void> {
+    const res = await fetchWithTimeout(`${this.url}/mcp`, {
       method: "POST",
-      headers: hdrs,
+      headers: this.headers(),
       body: JSON.stringify({
         jsonrpc: "2.0",
-        id: Date.now(),
-        method: "tools/call",
-        params: { name: toolName, arguments: args },
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: `work-agent-${this.name}`, version: "1.0.0" },
+        },
       }),
     });
-  };
-
-  let res = await doCall();
-  if (!res.ok) {
-    // Session expired — reset and retry once
-    if (res.status === 404 || res.status === 400) {
-      console.error(`[work-agent] MCP session expired (${res.status}), re-initializing...`);
-      _mcpSessionId = undefined;
-      _mcpInitPromise = undefined;
-      await ensureMcpSession();
-      res = await doCall();
-      if (!res.ok) {
-        throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
-      }
-    } else {
-      throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      throw new Error(`MCP[${this.name}] init HTTP ${res.status}: ${await res.text()}`);
     }
+    const sid = res.headers.get("mcp-session-id");
+    if (sid) this.sessionId = sid;
+    // Read body to completion (may be JSON or SSE)
+    await parseMcpBody(res);
   }
-  const json = await parseMcpBody(res);
-  if (json.error) throw new Error(json.error.message);
-  return json.result;
+
+  private async ensureSession(): Promise<void> {
+    if (this.sessionId) return;
+    if (!this.initPromise) {
+      this.initPromise = this.init()
+        .then(() => {
+          console.error(`[work-agent] MCP[${this.name}] session initialized, sessionId: ${this.sessionId}`);
+        })
+        .catch((e) => {
+          console.error(`[work-agent] MCP[${this.name}] init failed: ${(e as Error).message}`);
+          this.initPromise = undefined;
+          throw e;
+        });
+    }
+    await this.initPromise;
+  }
+
+  async call(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
+    await this.ensureSession();
+
+    const doCall = async (): Promise<Response> => {
+      const hdrs = this.headers();
+      if (this.sessionId) hdrs["Mcp-Session-Id"] = this.sessionId;
+      return fetchWithTimeout(`${this.url}/mcp`, {
+        method: "POST",
+        headers: hdrs,
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: Date.now(),
+          method: "tools/call",
+          params: { name: toolName, arguments: args },
+        }),
+      });
+    };
+
+    let res = await doCall();
+    if (!res.ok) {
+      // Session expired — reset and retry once
+      if (res.status === 404 || res.status === 400) {
+        console.error(`[work-agent] MCP[${this.name}] session expired (${res.status}), re-initializing...`);
+        this.sessionId = undefined;
+        this.initPromise = undefined;
+        await this.ensureSession();
+        res = await doCall();
+        if (!res.ok) {
+          throw new Error(`MCP[${this.name}] HTTP ${res.status}: ${await res.text()}`);
+        }
+      } else {
+        throw new Error(`MCP[${this.name}] HTTP ${res.status}: ${await res.text()}`);
+      }
+    }
+    const json = await parseMcpBody(res);
+    if (json.error) throw new Error(json.error.message);
+    return json.result;
+  }
 }

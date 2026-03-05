@@ -13,6 +13,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 export interface WorkAgentConfig {
   mcpServerUrl?: string;
+  amplitudeMcpUrl?: string;
   telegramSidecarUrl?: string;
   tavilyApiKey?: string;
   sidecarAuthToken?: string;
@@ -43,6 +44,7 @@ export function getPluginConfig(api: OpenClawPluginApi): WorkAgentConfig {
 
   return {
     mcpServerUrl: raw.mcpServerUrl || process.env.GOOGLE_MCP_URL,
+    amplitudeMcpUrl: raw.amplitudeMcpUrl || process.env.AMPLITUDE_MCP_URL,
     telegramSidecarUrl: raw.telegramSidecarUrl || process.env.TELEGRAM_SIDECAR_URL,
     tavilyApiKey: raw.tavilyApiKey || process.env.TAVILY_API_KEY,
     sidecarAuthToken: raw.sidecarAuthToken || process.env.SIDECAR_AUTH_TOKEN,

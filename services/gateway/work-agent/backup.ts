@@ -5,7 +5,7 @@
 
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mcpCall } from "./mcp-client.js";
+import type { McpClient } from "./mcp-client.js";
 import { fetchWithTimeout } from "./utils.js";
 
 // ---------------------------------------------------------------------------
@@ -103,12 +103,13 @@ export async function fetchWhatsAppBackup(
 
 /** Upload a buffer to Google Drive via MCP sidecar. */
 export async function uploadToDrive(
+  googleMcp: McpClient,
   fileName: string,
   content: Buffer,
   mimeType: string,
   account: string,
 ): Promise<DriveUploadResult> {
-  const result = await mcpCall("drive_upload", {
+  const result = await googleMcp.call("drive_upload", {
     account,
     file_name: fileName,
     content_base64: content.toString("base64"),
@@ -122,6 +123,7 @@ export async function uploadToDrive(
 
 /** Delete old backups beyond retention period. */
 export async function cleanupOldBackups(
+  googleMcp: McpClient,
   account: string,
   prefix: string,
   retentionDays: number,
@@ -131,7 +133,7 @@ export async function cleanupOldBackups(
   const cutoffIso = cutoff.toISOString();
 
   // Search for backup files in the folder
-  const searchResult = await mcpCall("drive_search_files", {
+  const searchResult = await googleMcp.call("drive_search_files", {
     account,
     query: `name contains '${prefix}' and modifiedTime < '${cutoffIso}' and trashed = false`,
     max_results: 50,
@@ -145,7 +147,7 @@ export async function cleanupOldBackups(
   let deleted = 0;
   for (const file of files) {
     try {
-      await mcpCall("drive_delete", { account, file_id: file.id });
+      await googleMcp.call("drive_delete", { account, file_id: file.id });
       deleted++;
       console.error(`[backup] Deleted old backup: ${file.name} (${file.id})`);
     } catch (e) {
@@ -162,7 +164,7 @@ export async function cleanupOldBackups(
 // ---------------------------------------------------------------------------
 
 /** Run full backup: postgres + memory + WA auth → upload → cleanup. */
-export async function runBackup(config: BackupConfig): Promise<BackupResult> {
+export async function runBackup(config: BackupConfig, googleMcp: McpClient): Promise<BackupResult> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const result: BackupResult = {
     ok: true,
@@ -176,6 +178,7 @@ export async function runBackup(config: BackupConfig): Promise<BackupResult> {
     const pgBuf = backupPostgres(config.dbUrl);
     const fileName = `backup-pg-${timestamp}.sql.gz`;
     const uploaded = await uploadToDrive(
+      googleMcp,
       fileName,
       pgBuf,
       "application/gzip",
@@ -205,6 +208,7 @@ export async function runBackup(config: BackupConfig): Promise<BackupResult> {
     if (memBuf) {
       const fileName = `backup-memory-${timestamp}.tar.gz`;
       const uploaded = await uploadToDrive(
+        googleMcp,
         fileName,
         memBuf,
         "application/gzip",
@@ -242,6 +246,7 @@ export async function runBackup(config: BackupConfig): Promise<BackupResult> {
       if (waBuf) {
         const fileName = `backup-wa-auth-${timestamp}.tar.gz`;
         const uploaded = await uploadToDrive(
+          googleMcp,
           fileName,
           waBuf,
           "application/gzip",
@@ -276,6 +281,7 @@ export async function runBackup(config: BackupConfig): Promise<BackupResult> {
   try {
     console.error("[backup] Cleaning up old backups...");
     const deleted = await cleanupOldBackups(
+      googleMcp,
       config.account,
       "backup-",
       config.retentionDays,

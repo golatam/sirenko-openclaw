@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { configureMcp, getMcpUrl, mcpCall } from "./mcp-client.js";
+import { McpClient } from "./mcp-client.js";
 import { fetchWithTimeout, extractParams, param, ok, err, confirmationId } from "./utils.js";
 import { getPluginConfig, extractContext, loadCostUsageSummaryFn } from "./adapter.js";
 import { runBackup, type BackupConfig, type BackupResult } from "./backup.js";
@@ -9,6 +9,8 @@ import { dirname } from "path";
 let _tgSidecarUrl: string | undefined;
 let _tavilyApiKey: string | undefined;
 let _sidecarAuthToken: string | undefined;
+let _googleMcp: McpClient | undefined;
+let _amplitudeMcp: McpClient | undefined;
 
 // ---------------------------------------------------------------------------
 // Tavily web search — lightweight REST API client
@@ -135,9 +137,8 @@ async function probeAllSidecars(): Promise<HealthResult> {
 
   const probes: Promise<void>[] = [];
 
-  const mcpUrl = getMcpUrl();
-  if (mcpUrl) {
-    probes.push(probeHealth(mcpUrl, "google_mcp_sidecar"));
+  if (_googleMcp) {
+    probes.push(probeHealth(_googleMcp.getUrl(), "google_mcp_sidecar"));
   } else {
     components.google_mcp_sidecar = { status: "error", detail: "not configured" };
     setWorst("error");
@@ -155,6 +156,12 @@ async function probeAllSidecars(): Promise<HealthResult> {
     probes.push(probeHealth(waSidecarUrl, "whatsapp_sidecar"));
   } else {
     components.whatsapp_sidecar = { status: "degraded", detail: "URL not configured (optional)" };
+  }
+
+  if (_amplitudeMcp) {
+    probes.push(probeHealth(_amplitudeMcp.getUrl(), "amplitude_mcp_sidecar"));
+  } else {
+    components.amplitude_mcp_sidecar = { status: "degraded", detail: "URL not configured (optional)" };
   }
 
   await Promise.allSettled(probes);
@@ -320,11 +327,16 @@ const WorkAgentPlugin = {
 
   register(api: OpenClawPluginApi) {
     const config = getPluginConfig(api);
-    if (config.mcpServerUrl) configureMcp(config.mcpServerUrl, config.sidecarAuthToken);
+    if (config.mcpServerUrl) _googleMcp = new McpClient("google", config.mcpServerUrl, config.sidecarAuthToken);
+    if (config.amplitudeMcpUrl) _amplitudeMcp = new McpClient("amplitude", config.amplitudeMcpUrl, config.sidecarAuthToken);
     _tgSidecarUrl = config.telegramSidecarUrl;
     _tavilyApiKey = config.tavilyApiKey;
     _sidecarAuthToken = config.sidecarAuthToken;
-    console.error(`[work-agent] mcpUrl=${config.mcpServerUrl} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"}`);
+    console.error(`[work-agent] googleMcp=${config.mcpServerUrl} amplitudeMcp=${config.amplitudeMcpUrl || "not set"} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"}`);
+
+    // Alias for readability in tool handlers
+    const googleMcp = _googleMcp;
+    const amplitudeMcp = _amplitudeMcp;
 
     // -----------------------------------------------------------------------
     // Gmail tools
@@ -381,7 +393,7 @@ const WorkAgentPlugin = {
             max_results: limit,
           };
           if (account) gmailArgs.account = account;
-          tasks.push({ key: "gmail", promise: mcpCall("query_gmail_emails", gmailArgs) });
+          tasks.push({ key: "gmail", promise: googleMcp!.call("query_gmail_emails", gmailArgs) });
         }
 
         // Telegram search
@@ -408,7 +420,7 @@ const WorkAgentPlugin = {
             max_results: Math.min(limit, 10),
           };
           if (account) driveArgs.account = account;
-          tasks.push({ key: "drive", promise: mcpCall("drive_search_files", driveArgs) });
+          tasks.push({ key: "drive", promise: googleMcp!.call("drive_search_files", driveArgs) });
         }
 
         // Calendar search
@@ -421,7 +433,7 @@ const WorkAgentPlugin = {
           if (from) calArgs.time_min = from.includes("T") ? from : `${from}T00:00:00Z`;
           if (to) calArgs.time_max = to.includes("T") ? to : `${to}T23:59:59Z`;
           if (account) calArgs.account = account;
-          tasks.push({ key: "calendar", promise: mcpCall("calendar_get_events", calArgs) });
+          tasks.push({ key: "calendar", promise: googleMcp!.call("calendar_get_events", calArgs) });
         }
 
         // Run all sources in parallel
@@ -466,7 +478,7 @@ const WorkAgentPlugin = {
           };
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const result = await mcpCall("gmail_get_message_details", args);
+          const result = await googleMcp!.call("gmail_get_message_details", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -554,7 +566,7 @@ const WorkAgentPlugin = {
           if (cc) args.cc = cc;
           if (bcc) args.bcc = bcc;
 
-          const result = await mcpCall("gmail_send_email", args);
+          const result = await googleMcp!.call("gmail_send_email", args);
           return ok(result, { action: "email_sent" });
         } catch (e) {
           return err((e as Error).message);
@@ -587,7 +599,7 @@ const WorkAgentPlugin = {
           const args: Record<string, unknown> = {};
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const result = await mcpCall("calendar_list_calendars", args);
+          const result = await googleMcp!.call("calendar_list_calendars", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -640,7 +652,7 @@ const WorkAgentPlugin = {
           const timeMax = param(params, "time_max") as string | undefined;
           if (timeMax) args.time_max = timeMax;
 
-          const result = await mcpCall("calendar_get_events", args);
+          const result = await googleMcp!.call("calendar_get_events", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -748,7 +760,7 @@ const WorkAgentPlugin = {
           if (location) args.location = location;
           if (attendees?.length) args.attendees = attendees;
 
-          const result = await mcpCall("create_calendar_event", args);
+          const result = await googleMcp!.call("create_calendar_event", args);
           return ok(result, { action: "event_created" });
         } catch (e) {
           return err((e as Error).message);
@@ -791,7 +803,7 @@ const WorkAgentPlugin = {
           };
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const result = await mcpCall("drive_search_files", args);
+          const result = await googleMcp!.call("drive_search_files", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -823,7 +835,7 @@ const WorkAgentPlugin = {
           const args: Record<string, unknown> = { file_id: fileId };
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const result = await mcpCall("drive_read_file_content", args);
+          const result = await googleMcp!.call("drive_read_file_content", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -976,6 +988,118 @@ const WorkAgentPlugin = {
     });
 
     // -----------------------------------------------------------------------
+    // Amplitude analytics
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_amplitude_query",
+      label: "Amplitude Query",
+      description:
+        "Run an event segmentation query on Amplitude analytics. " +
+        "Returns time-series data for specified events with optional metric, interval, segments, and groupBy. " +
+        "Requires amplitude-mcp-sidecar to be configured.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          events: {
+            type: "string",
+            description: "Events JSON — Amplitude event segmentation format, e.g. [{\"event_type\":\"Page View\"}]",
+          },
+          metric: {
+            type: "string",
+            description: "Metric type: uniques, totals, avg, formula (default: uniques)",
+          },
+          start_date: { type: "string", description: "Start date (YYYYMMDD)" },
+          end_date: { type: "string", description: "End date (YYYYMMDD)" },
+          interval: {
+            type: "string",
+            description: "Time interval: -300000 (real-time), 1 (daily), 7 (weekly), 30 (monthly)",
+          },
+          segment_filters: {
+            type: "string",
+            description: "Segments JSON for filtering (Amplitude format)",
+          },
+          group_by: {
+            type: "string",
+            description: "Group by property JSON (Amplitude format)",
+          },
+        },
+        required: ["events", "start_date", "end_date"],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        if (!amplitudeMcp) return err("Amplitude MCP sidecar is not configured");
+        try {
+          const args: Record<string, unknown> = {
+            e: param(params, "events") as string,
+            start: param(params, "start_date") as string,
+            end: param(params, "end_date") as string,
+          };
+          const metric = param(params, "metric") as string | undefined;
+          if (metric) args.m = metric;
+          const interval = param(params, "interval") as string | undefined;
+          if (interval) args.i = interval;
+          const segments = param(params, "segment_filters") as string | undefined;
+          if (segments) args.s = segments;
+          const groupBy = param(params, "group_by") as string | undefined;
+          if (groupBy) args.g = groupBy;
+
+          const result = await amplitudeMcp.call("amplitude_query", args);
+          return ok(result);
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "work_amplitude_chart",
+      label: "Amplitude Chart",
+      description:
+        "Get data from a saved Amplitude chart by its ID. " +
+        "Useful for fetching pre-configured dashboards and reports.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          chart_id: { type: "string", description: "Amplitude chart ID" },
+        },
+        required: ["chart_id"],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        if (!amplitudeMcp) return err("Amplitude MCP sidecar is not configured");
+        try {
+          const chartId = param(params, "chart_id") as string;
+          if (!chartId) return err("chart_id is required");
+          const result = await amplitudeMcp.call("amplitude_chart", { chart_id: chartId });
+          return ok(result);
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "work_amplitude_overview",
+      label: "Amplitude Overview",
+      description:
+        "List available event types in Amplitude. Use this to understand the event taxonomy " +
+        "before running queries. Returns all tracked event types with descriptions.",
+      parameters: { type: "object", properties: {}, required: [] },
+      async execute() {
+        if (!amplitudeMcp) return err("Amplitude MCP sidecar is not configured");
+        try {
+          const result = await amplitudeMcp.call("amplitude_list_events");
+          return ok(result);
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    // -----------------------------------------------------------------------
     // Backup
     // -----------------------------------------------------------------------
 
@@ -997,8 +1121,9 @@ const WorkAgentPlugin = {
             retentionDays: BACKUP_RETENTION_DAYS,
           };
           if (!backupConfig.dbUrl) return err("DATABASE_URL not configured");
+          if (!googleMcp) return err("Google MCP sidecar not configured (needed for Drive upload)");
 
-          const result = await runBackup(backupConfig);
+          const result = await runBackup(backupConfig, googleMcp);
           saveBackupStatus(result);
           return ok(result, { status: result.ok ? "complete" : "partial" });
         } catch (e) {
@@ -1215,9 +1340,9 @@ const WorkAgentPlugin = {
         if (account) driveArgs.account = account;
 
         const [gmailResult, telegramResult, driveResult] = await Promise.allSettled([
-          mcpCall("query_gmail_emails", gmailArgs),
+          googleMcp!.call("query_gmail_emails", gmailArgs),
           queryMessages(project, { from, to, limit: 50 }),
-          mcpCall("drive_search_files", driveArgs),
+          googleMcp!.call("drive_search_files", driveArgs),
         ]);
 
         const data: { gmail?: unknown; telegram?: unknown; drive?: unknown } = {
@@ -1298,9 +1423,9 @@ const WorkAgentPlugin = {
           if (account) driveArgs.account = account;
 
           const [gmailResult, telegramResult, driveResult] = await Promise.allSettled([
-            mcpCall("query_gmail_emails", gmailArgs),
+            googleMcp!.call("query_gmail_emails", gmailArgs),
             queryMessages(project, { from: weekStart, to: weekEnd, limit: 50 }),
-            mcpCall("drive_search_files", driveArgs),
+            googleMcp!.call("drive_search_files", driveArgs),
           ]);
 
           report.projects[project] = {
@@ -1319,7 +1444,7 @@ const WorkAgentPlugin = {
             max_results: 50,
           };
           if (account) calArgs.account = account;
-          report.calendar = await mcpCall("calendar_get_events", calArgs);
+          report.calendar = await googleMcp!.call("calendar_get_events", calArgs);
         } catch (e) {
           report.calendar = { error: (e as Error).message };
         }
@@ -1371,6 +1496,10 @@ const WorkAgentPlugin = {
           console.error("[work-agent] backup: DATABASE_URL not set, skipping");
           return;
         }
+        if (!googleMcp) {
+          console.error("[work-agent] backup: Google MCP not configured, skipping");
+          return;
+        }
 
         console.error("[work-agent] backup: starting scheduled backup...");
         const backupConfig: BackupConfig = {
@@ -1382,7 +1511,7 @@ const WorkAgentPlugin = {
           retentionDays: BACKUP_RETENTION_DAYS,
         };
 
-        const result = await runBackup(backupConfig);
+        const result = await runBackup(backupConfig, googleMcp);
         saveBackupStatus(result);
 
         if (!result.ok) {
