@@ -607,6 +607,280 @@ def drive_delete(account: str, file_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Sheets tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def sheets_create(title: str, sheet_names: list[str] | None = None,
+                  account: str = "") -> str:
+    """Create a new Google Spreadsheet.
+
+    Args:
+        title: Spreadsheet title
+        sheet_names: Optional list of sheet/tab names to create (default: one "Sheet1")
+        account: Gmail account email (optional)
+    """
+    sheets = _get_service(account or None, "sheets", "v4")
+    body: dict[str, Any] = {"properties": {"title": title}}
+    if sheet_names:
+        body["sheets"] = [{"properties": {"title": name}} for name in sheet_names]
+
+    spreadsheet = sheets.spreadsheets().create(body=body).execute()
+    return json.dumps({
+        "spreadsheet_id": spreadsheet["spreadsheetId"],
+        "title": spreadsheet["properties"]["title"],
+        "url": spreadsheet.get("spreadsheetUrl", ""),
+        "sheets": [s["properties"]["title"] for s in spreadsheet.get("sheets", [])],
+    })
+
+
+@mcp.tool()
+def sheets_read(spreadsheet_id: str, range: str = "Sheet1",
+                account: str = "") -> str:
+    """Read values from a Google Spreadsheet range.
+
+    Args:
+        spreadsheet_id: Google Spreadsheet ID
+        range: A1 notation range (e.g. "Sheet1!A1:D10", "Sheet1", "A1:B5")
+        account: Gmail account email (optional)
+    """
+    sheets = _get_service(account or None, "sheets", "v4")
+    result = sheets.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id, range=range
+    ).execute()
+    return json.dumps({
+        "range": result.get("range", ""),
+        "values": result.get("values", []),
+        "total_rows": len(result.get("values", [])),
+    })
+
+
+@mcp.tool()
+def sheets_write(spreadsheet_id: str, range: str, values: list,
+                 account: str = "") -> str:
+    """Write values to a Google Spreadsheet range. Overwrites existing data.
+
+    Args:
+        spreadsheet_id: Google Spreadsheet ID
+        range: A1 notation range (e.g. "Sheet1!A1")
+        values: 2D array of values, e.g. [["Name","Age"],["Alice",30]]
+        account: Gmail account email (optional)
+    """
+    sheets = _get_service(account or None, "sheets", "v4")
+    result = sheets.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id, range=range,
+        valueInputOption="USER_ENTERED",
+        body={"values": values}
+    ).execute()
+    return json.dumps({
+        "updated_range": result.get("updatedRange", ""),
+        "updated_rows": result.get("updatedRows", 0),
+        "updated_columns": result.get("updatedColumns", 0),
+        "updated_cells": result.get("updatedCells", 0),
+    })
+
+
+@mcp.tool()
+def sheets_append(spreadsheet_id: str, values: list,
+                  range: str = "Sheet1", account: str = "") -> str:
+    """Append rows after existing data in a Google Spreadsheet.
+
+    Args:
+        spreadsheet_id: Google Spreadsheet ID
+        values: 2D array of rows to append, e.g. [["Alice",30],["Bob",25]]
+        range: Sheet name or range to append to (default: Sheet1)
+        account: Gmail account email (optional)
+    """
+    sheets = _get_service(account or None, "sheets", "v4")
+    result = sheets.spreadsheets().values().append(
+        spreadsheetId=spreadsheet_id, range=range,
+        valueInputOption="USER_ENTERED",
+        insertDataOption="INSERT_ROWS",
+        body={"values": values}
+    ).execute()
+    updates = result.get("updates", {})
+    return json.dumps({
+        "updated_range": updates.get("updatedRange", ""),
+        "updated_rows": updates.get("updatedRows", 0),
+        "updated_cells": updates.get("updatedCells", 0),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Docs tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def docs_create(title: str, content: str = "", account: str = "") -> str:
+    """Create a new Google Document, optionally with initial text content.
+
+    Args:
+        title: Document title
+        content: Initial text content (optional)
+        account: Gmail account email (optional)
+    """
+    docs = _get_service(account or None, "docs", "v1")
+    doc = docs.documents().create(body={"title": title}).execute()
+    doc_id = doc["documentId"]
+
+    if content:
+        docs.documents().batchUpdate(documentId=doc_id, body={
+            "requests": [{"insertText": {"location": {"index": 1}, "text": content}}]
+        }).execute()
+
+    return json.dumps({
+        "document_id": doc_id,
+        "title": doc.get("title", title),
+        "url": f"https://docs.google.com/document/d/{doc_id}/edit",
+    })
+
+
+@mcp.tool()
+def docs_read(document_id: str, account: str = "") -> str:
+    """Read the full text content of a Google Document.
+
+    Returns structured text extracted from the document body.
+
+    Args:
+        document_id: Google Document ID
+        account: Gmail account email (optional)
+    """
+    docs = _get_service(account or None, "docs", "v1")
+    doc = docs.documents().get(documentId=document_id).execute()
+
+    # Extract plain text from structural elements
+    text_parts = []
+    for element in doc.get("body", {}).get("content", []):
+        if "paragraph" in element:
+            for pe in element["paragraph"].get("elements", []):
+                if "textRun" in pe:
+                    text_parts.append(pe["textRun"]["content"])
+
+    return json.dumps({
+        "document_id": document_id,
+        "title": doc.get("title", ""),
+        "content": "".join(text_parts),
+        "url": f"https://docs.google.com/document/d/{document_id}/edit",
+    })
+
+
+@mcp.tool()
+def docs_append(document_id: str, text: str, account: str = "") -> str:
+    """Append text to the end of a Google Document.
+
+    Args:
+        document_id: Google Document ID
+        text: Text to append
+        account: Gmail account email (optional)
+    """
+    docs = _get_service(account or None, "docs", "v1")
+
+    # Get document to find the end index
+    doc = docs.documents().get(documentId=document_id).execute()
+    body_content = doc.get("body", {}).get("content", [])
+    end_index = body_content[-1]["endIndex"] - 1 if body_content else 1
+
+    docs.documents().batchUpdate(documentId=document_id, body={
+        "requests": [{"insertText": {"location": {"index": end_index}, "text": text}}]
+    }).execute()
+
+    return json.dumps({
+        "document_id": document_id,
+        "appended_length": len(text),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Google Analytics 4 tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def analytics_list_properties(account: str = "") -> str:
+    """List Google Analytics 4 properties accessible to the account.
+
+    When account is empty, lists properties from ALL connected accounts.
+
+    Args:
+        account: Gmail account email. Empty = all accounts.
+    """
+    accounts_to_query = [account] if account else list(_accounts.keys())
+
+    all_properties: list[dict] = []
+    for acct in accounts_to_query:
+        try:
+            admin = _get_service(acct, "analyticsadmin", "v1beta")
+            resp = admin.accountSummaries().list().execute()
+            for summary in resp.get("accountSummaries", []):
+                ga_account_name = summary.get("displayName", "")
+                for prop in summary.get("propertySummaries", []):
+                    all_properties.append({
+                        "property_id": prop["property"].replace("properties/", ""),
+                        "property_name": prop.get("displayName", ""),
+                        "ga_account": ga_account_name,
+                        "google_account": acct,
+                    })
+        except Exception as e:
+            print(f"[ANALYTICS] Error listing properties for {acct}: {e}",
+                  flush=True, file=sys.stderr)
+
+    return json.dumps({"properties": all_properties, "total": len(all_properties)})
+
+
+@mcp.tool()
+def analytics_run_report(property_id: str, metrics: list[str],
+                         dimensions: list[str] | None = None,
+                         start_date: str = "30daysAgo", end_date: str = "today",
+                         limit: int = 100, account: str = "") -> str:
+    """Run a Google Analytics 4 report.
+
+    Common metrics: activeUsers, sessions, screenPageViews, conversions, totalRevenue.
+    Common dimensions: date, country, city, pagePath, sessionSource, deviceCategory.
+
+    Args:
+        property_id: GA4 property ID (numeric, e.g. "123456789")
+        metrics: List of metric names (e.g. ["activeUsers", "sessions"])
+        dimensions: List of dimension names (optional, e.g. ["date", "country"])
+        start_date: Start date — YYYY-MM-DD or relative: "today", "yesterday", "7daysAgo", "30daysAgo"
+        end_date: End date — YYYY-MM-DD or relative (default: "today")
+        limit: Max rows to return (default: 100)
+        account: Gmail account email (optional)
+    """
+    data = _get_service(account or None, "analyticsdata", "v1beta")
+
+    body: dict[str, Any] = {
+        "metrics": [{"name": m} for m in metrics],
+        "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+        "limit": limit,
+    }
+    if dimensions:
+        body["dimensions"] = [{"name": d} for d in dimensions]
+
+    resp = data.properties().runReport(
+        property=f"properties/{property_id}", body=body
+    ).execute()
+
+    # Parse structured response into flat rows
+    dim_headers = [h["name"] for h in resp.get("dimensionHeaders", [])]
+    met_headers = [h["name"] for h in resp.get("metricHeaders", [])]
+
+    rows = []
+    for row in resp.get("rows", []):
+        r: dict[str, str] = {}
+        for i, dv in enumerate(row.get("dimensionValues", [])):
+            r[dim_headers[i]] = dv["value"]
+        for i, mv in enumerate(row.get("metricValues", [])):
+            r[met_headers[i]] = mv["value"]
+        rows.append(r)
+
+    return json.dumps({
+        "row_count": resp.get("rowCount", 0),
+        "rows": rows,
+        "dimensions": dim_headers,
+        "metrics": met_headers,
+    })
+
+
+# ---------------------------------------------------------------------------
 # ASGI middleware: normalize camelCase → snake_case in MCP tool arguments
 # ---------------------------------------------------------------------------
 #
