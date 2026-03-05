@@ -24,7 +24,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 6. **PostgreSQL** — общий на Railway. Схема в `services/telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
 
-Плагин (`services/gateway/work-agent/index.ts`) регистрирует 17 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. MCP-клиент (`mcp-client.ts`) — класс `McpClient` с per-instance session state и поддержкой auth providers (InternalAuthProvider для сайдкаров, OAuthBearerProvider для Amplitude). Инстансы: `googleMcp` (Google) и `amplitudeMcp` (Amplitude — official MCP server). Telegram-данные из PostgreSQL через HTTP.
+Плагин (`services/gateway/work-agent/index.ts`) регистрирует 19 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. MCP-клиент (`mcp-client.ts`) — класс `McpClient` с per-instance session state и поддержкой auth providers (InternalAuthProvider для сайдкаров, OAuthBearerProvider для Amplitude). Инстансы: `googleMcp` (Google) и `amplitudeMcp` (Amplitude — official MCP server). Telegram-данные из PostgreSQL через HTTP.
 
 ## Persistent Storage
 

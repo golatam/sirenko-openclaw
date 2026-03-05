@@ -55,7 +55,7 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 17 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send, health check, backup, Amplitude)
+- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 19 тулов (Gmail, Calendar, Drive, GA4, Telegram, WhatsApp search, usage, channel info, Slack send, health check, backup, Amplitude)
 - `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
 - `work_slack_send` — отправка сообщений в Slack (DM по email или channel ID); используется cron-задачами
 - 30s AbortController таймаут на все fetch-вызовы

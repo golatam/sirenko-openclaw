@@ -1050,6 +1050,116 @@ const WorkAgentPlugin = {
     });
 
     // -----------------------------------------------------------------------
+    // Google Analytics (GA4 via google-mcp-sidecar)
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_analytics_properties",
+      label: "GA4 Properties",
+      description:
+        "List Google Analytics 4 properties accessible to a connected Google account. " +
+        "Returns property IDs needed for work_analytics_report. " +
+        "When account is empty, lists properties from ALL connected accounts.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          account: {
+            type: "string",
+            description: "Gmail account email (optional — empty = all accounts)",
+          },
+        },
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        if (!googleMcp) return err("Google MCP sidecar not configured");
+        try {
+          const args: Record<string, unknown> = {};
+          const account = param(params, "account") as string | undefined;
+          if (account) args.account = account;
+          const result = await googleMcp.call("analytics_list_properties", args);
+          return ok(result);
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "work_analytics_report",
+      label: "GA4 Report",
+      description:
+        "Run a Google Analytics 4 report. Use work_analytics_properties first to get property IDs. " +
+        "Common metrics: activeUsers, sessions, screenPageViews, conversions, totalRevenue. " +
+        "Common dimensions: date, country, city, pagePath, sessionSource, deviceCategory.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          property_id: {
+            type: "string",
+            description: "GA4 property ID (numeric, e.g. \"123456789\")",
+          },
+          metrics: {
+            type: "array",
+            items: { type: "string" },
+            description: "List of metric names (e.g. [\"activeUsers\", \"sessions\"])",
+          },
+          dimensions: {
+            type: "array",
+            items: { type: "string" },
+            description: "List of dimension names (optional, e.g. [\"date\", \"country\"])",
+          },
+          start_date: {
+            type: "string",
+            description: "Start date — YYYY-MM-DD or relative: \"today\", \"yesterday\", \"7daysAgo\", \"30daysAgo\" (default: \"30daysAgo\")",
+          },
+          end_date: {
+            type: "string",
+            description: "End date — YYYY-MM-DD or relative (default: \"today\")",
+          },
+          limit: {
+            type: "number",
+            description: "Max rows to return (default: 100)",
+          },
+          account: {
+            type: "string",
+            description: "Gmail account email (optional)",
+          },
+        },
+        required: ["property_id", "metrics"],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        if (!googleMcp) return err("Google MCP sidecar not configured");
+        try {
+          const propertyId = param(params, "property_id") as string;
+          const metrics = param(params, "metrics") as string[];
+          if (!propertyId) return err("property_id is required");
+          if (!metrics || !metrics.length) return err("metrics is required (array of metric names)");
+          const args: Record<string, unknown> = {
+            property_id: propertyId,
+            metrics,
+          };
+          const dimensions = param(params, "dimensions") as string[] | undefined;
+          if (dimensions?.length) args.dimensions = dimensions;
+          const startDate = param(params, "start_date") as string | undefined;
+          if (startDate) args.start_date = startDate;
+          const endDate = param(params, "end_date") as string | undefined;
+          if (endDate) args.end_date = endDate;
+          const limit = param(params, "limit") as number | undefined;
+          if (limit) args.limit = limit;
+          const account = param(params, "account") as string | undefined;
+          if (account) args.account = account;
+          const result = await googleMcp.call("analytics_run_report", args);
+          return ok(result);
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    // -----------------------------------------------------------------------
     // Amplitude analytics (official MCP server via OAuth)
     // -----------------------------------------------------------------------
 
