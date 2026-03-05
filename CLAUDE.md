@@ -12,7 +12,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 Четыре сервиса + Amplitude (hosted) + общая БД, деплой на Railway:
 
-1. **OpenClaw Gateway** (`services/gateway/`) — Node.js 22, OpenClaw v2026.2.23 (глобально). Загружает плагин `work-agent` по пути. HTTP API + Telegram бот-канал + Slack (Socket Mode, DM + каналы). Конфиг: `services/gateway/openclaw.json`. Персона агента: `services/gateway/workspace/IDENTITY.md` и `services/gateway/workspace/USER.md`. Heartbeat: `services/gateway/workspace/HEARTBEAT.md`.
+1. **OpenClaw Gateway** (`services/gateway/`) — Node.js 22, OpenClaw v2026.3.2 (глобально). Загружает плагин `work-agent` по пути. HTTP API + Telegram бот-канал + Slack (Socket Mode, DM + каналы). Конфиг: `services/gateway/openclaw.json`. Персона агента: `services/gateway/workspace/IDENTITY.md` и `services/gateway/workspace/USER.md`. Heartbeat: `services/gateway/workspace/HEARTBEAT.md`.
 
 2. **Telegram Sidecar** (`services/telegram-sidecar/`) — Python 3.11 asyncio, Telethon (MTProto). Логинится в 3 пользовательских аккаунта через StringSession, пишет сообщения в PostgreSQL. HTTP search API (source-agnostic: ищет и Telegram, и WhatsApp). Точка входа: `main.py`.
 
@@ -52,7 +52,7 @@ cp .env.example .env   # заполнить секретами из Railway
 docker compose up --build
 
 # Или по отдельности:
-# Gateway (нужен openclaw глобально: npm install -g openclaw@2026.2.23)
+# Gateway (нужен openclaw глобально: npm install -g openclaw@2026.3.2)
 cd services/gateway && openclaw gateway run --allow-unconfigured --port 18789
 
 # Google MCP sidecar

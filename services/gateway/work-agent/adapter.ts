@@ -3,6 +3,13 @@
  *
  * Isolates SDK coupling so that OpenClaw version upgrades only require
  * changes here, not across the entire plugin codebase.
+ *
+ * Everything that "knows" how OpenClaw calls plugins lives here:
+ *   - execute() argument layout (toolUseId, params, context, callback)
+ *   - camelCase parameter conversion quirk
+ *   - plugin config access (.pluginConfig / .config)
+ *   - internal module loading (cost/usage)
+ *   - response format ({ content: [...], details: {...} })
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -97,4 +104,62 @@ export async function loadCostUsageSummaryFn(): Promise<CostUsageFn | null> {
     console.error("[adapter] Failed to load cost/usage module:", (e as Error).message);
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// 4. Param extraction — unpacks execute() call convention
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the params object from execute() arguments.
+ * OpenClaw calls execute(toolUseId, params, context, callback) — 4 args.
+ * This helper safely extracts the params object regardless of call convention.
+ */
+export function extractParams(rawArgs: unknown[]): Record<string, unknown> {
+  if (typeof rawArgs[0] === "string" && rawArgs.length > 1 && typeof rawArgs[1] === "object" && rawArgs[1] !== null) {
+    return rawArgs[1] as Record<string, unknown>;
+  }
+  return (rawArgs[0] as Record<string, unknown>) ?? {};
+}
+
+/**
+ * Resolve a parameter that may arrive as snake_case or camelCase.
+ * OpenClaw may convert snake_case param names (e.g. message_id → messageId)
+ * when routing tool calls. This helper checks both forms.
+ */
+export function param(params: Record<string, unknown>, snakeName: string): unknown {
+  if (params[snakeName] !== undefined) return params[snakeName];
+  const camelName = snakeName.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+  if (camelName !== snakeName && params[camelName] !== undefined) return params[camelName];
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// 5. Response builders — OpenClaw plugin response format
+// ---------------------------------------------------------------------------
+
+export interface ToolResponse {
+  content: Array<{ type: "text"; text: string }>;
+  details: Record<string, unknown>;
+}
+
+export function ok(data: unknown, details: Record<string, unknown> = {}): ToolResponse {
+  return {
+    content: [
+      { type: "text" as const, text: JSON.stringify(data, null, 2) },
+    ],
+    details: { ok: true, ...details },
+  };
+}
+
+export function err(message: string): ToolResponse {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify({ ok: false, error: message }, null, 2),
+      },
+    ],
+    details: { ok: false, error: message },
+  };
 }

@@ -4,7 +4,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates curl postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g openclaw@2026.2.23 clawhub @clawdbot/lobster@2026.1.24 \
+RUN npm install -g openclaw@2026.3.2 clawhub @clawdbot/lobster@2026.1.24 \
   && echo "[dockerfile] lobster CLI installed: $(lobster --version 2>&1 || echo 'version unknown')"
 
 WORKDIR /app

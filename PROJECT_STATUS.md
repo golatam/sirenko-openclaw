@@ -18,7 +18,7 @@ See: `ARCHITECTURE.md`
 ## Current Services (Railway)
 Project: `openclaw-work-agent`
 Services:
-- `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core)
+- `gateway` (OpenClaw Gateway v2026.3.2 + work-agent plugin + memory-core)
 - `google-mcp-sidecar` (FastMCP, 9 тулов, мультиаккаунт)
 - `telegram-sidecar` (Telethon MTProto ingestion + HTTP search API)
 - `whatsapp-sidecar` (Baileys ingestion → PostgreSQL, source-agnostic search через telegram-sidecar)

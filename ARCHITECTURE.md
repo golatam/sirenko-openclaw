@@ -10,7 +10,7 @@ Use OpenClaw Gateway as the primary runtime and add:
 
 **Services**
 1. OpenClaw Gateway (`services/gateway/`)
-- Node.js 22, OpenClaw v2026.2.23
+- Node.js 22, OpenClaw v2026.3.2
 - Telegram bot channel (Telegram Bot API)
 - WhatsApp channel (Baileys) — pending
 - Control UI for management

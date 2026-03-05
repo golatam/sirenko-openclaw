@@ -48,59 +48,6 @@ export async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs
 }
 
 // ---------------------------------------------------------------------------
-// OpenClaw SDK helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Extract the params object from execute() arguments.
- * OpenClaw calls execute(toolUseId, params, context, callback) — 4 args.
- * This helper safely extracts the params object regardless of call convention.
- */
-export function extractParams(rawArgs: unknown[]): Record<string, unknown> {
-  if (typeof rawArgs[0] === "string" && rawArgs.length > 1 && typeof rawArgs[1] === "object" && rawArgs[1] !== null) {
-    return rawArgs[1] as Record<string, unknown>;
-  }
-  return (rawArgs[0] as Record<string, unknown>) ?? {};
-}
-
-/**
- * Resolve a parameter that may arrive as snake_case or camelCase.
- * OpenClaw may convert snake_case param names (e.g. message_id → messageId)
- * when routing tool calls. This helper checks both forms.
- */
-export function param(params: Record<string, unknown>, snakeName: string): unknown {
-  if (params[snakeName] !== undefined) return params[snakeName];
-  const camelName = snakeName.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
-  if (camelName !== snakeName && params[camelName] !== undefined) return params[camelName];
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Response builders
-// ---------------------------------------------------------------------------
-
-export function ok(data: unknown, details: Record<string, unknown> = {}) {
-  return {
-    content: [
-      { type: "text" as const, text: JSON.stringify(data, null, 2) },
-    ],
-    details: { ok: true, ...details },
-  };
-}
-
-export function err(message: string) {
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify({ ok: false, error: message }, null, 2),
-      },
-    ],
-    details: { ok: false, error: message },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Confirmation
 // ---------------------------------------------------------------------------
 
