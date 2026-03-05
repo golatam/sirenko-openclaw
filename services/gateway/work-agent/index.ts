@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { McpClient } from "./mcp-client.js";
+import { McpClient, OAuthBearerProvider } from "./mcp-client.js";
 import { fetchWithTimeout, extractParams, param, ok, err, confirmationId } from "./utils.js";
 import { getPluginConfig, extractContext, loadCostUsageSummaryFn } from "./adapter.js";
 import { runBackup, type BackupConfig, type BackupResult } from "./backup.js";
@@ -159,9 +159,23 @@ async function probeAllSidecars(): Promise<HealthResult> {
   }
 
   if (_amplitudeMcp) {
-    probes.push(probeHealth(_amplitudeMcp.getUrl(), "amplitude_mcp_sidecar"));
+    probes.push((async () => {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10_000);
+        try {
+          const result = await _amplitudeMcp!.listTools();
+          components.amplitude_mcp = { status: "ok", tools_count: result.tools?.length ?? 0 };
+        } finally {
+          clearTimeout(timer);
+        }
+      } catch (e) {
+        components.amplitude_mcp = { status: "error", detail: (e as Error).message };
+        setWorst("error");
+      }
+    })());
   } else {
-    components.amplitude_mcp_sidecar = { status: "degraded", detail: "URL not configured (optional)" };
+    components.amplitude_mcp = { status: "degraded", detail: "not configured (optional)" };
   }
 
   await Promise.allSettled(probes);
@@ -328,11 +342,49 @@ const WorkAgentPlugin = {
   register(api: OpenClawPluginApi) {
     const config = getPluginConfig(api);
     if (config.mcpServerUrl) _googleMcp = new McpClient("google", config.mcpServerUrl, config.sidecarAuthToken);
-    if (config.amplitudeMcpUrl) _amplitudeMcp = new McpClient("amplitude", config.amplitudeMcpUrl, config.sidecarAuthToken);
+
+    // Amplitude: prefer OAuth (official MCP server) over legacy sidecar auth
+    const ampOAuthStateFile = "/data/openclaw-state/amplitude-oauth.json";
+    if (config.amplitudeOAuthRefreshToken && config.amplitudeOAuthClientId) {
+      // Load persisted access_token (survives restarts without re-reading env var)
+      let accessToken = config.amplitudeOAuthAccessToken || "";
+      try {
+        const state = JSON.parse(readFileSync(ampOAuthStateFile, "utf-8"));
+        if (state.accessToken) accessToken = state.accessToken;
+      } catch {
+        // no state file yet — use env var
+      }
+
+      const ampUrl = (config.amplitudeMcpUrl || "https://mcp.amplitude.com") + "/mcp";
+      const oauthProvider = new OAuthBearerProvider({
+        accessToken,
+        refreshToken: config.amplitudeOAuthRefreshToken,
+        clientId: config.amplitudeOAuthClientId,
+        tokenEndpoint: "https://mcp.amplitude.com/token",
+        onTokenRefreshed: (newToken: string) => {
+          try {
+            mkdirSync(dirname(ampOAuthStateFile), { recursive: true });
+            writeFileSync(ampOAuthStateFile, JSON.stringify({
+              accessToken: newToken,
+              updatedAt: new Date().toISOString(),
+            }));
+          } catch (e) {
+            console.error(`[work-agent] failed to persist amplitude token: ${(e as Error).message}`);
+          }
+        },
+      });
+      _amplitudeMcp = new McpClient("amplitude", ampUrl, oauthProvider);
+      console.error("[work-agent] Amplitude: OAuth (official MCP server)");
+    } else if (config.amplitudeMcpUrl && !config.amplitudeMcpUrl.includes("mcp.amplitude.com") && config.sidecarAuthToken) {
+      // Legacy: custom sidecar with internal auth (non-default URL)
+      _amplitudeMcp = new McpClient("amplitude", config.amplitudeMcpUrl, config.sidecarAuthToken);
+      console.error("[work-agent] Amplitude: legacy sidecar auth");
+    }
+
     _tgSidecarUrl = config.telegramSidecarUrl;
     _tavilyApiKey = config.tavilyApiKey;
     _sidecarAuthToken = config.sidecarAuthToken;
-    console.error(`[work-agent] googleMcp=${config.mcpServerUrl} amplitudeMcp=${config.amplitudeMcpUrl || "not set"} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"}`);
+    console.error(`[work-agent] googleMcp=${config.mcpServerUrl} amplitudeMcp=${_amplitudeMcp ? "configured" : "not set"} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"}`);
 
     // Alias for readability in tool handlers
     const googleMcp = _googleMcp;
@@ -988,110 +1040,62 @@ const WorkAgentPlugin = {
     });
 
     // -----------------------------------------------------------------------
-    // Amplitude analytics
+    // Amplitude analytics (official MCP server via OAuth)
     // -----------------------------------------------------------------------
 
     api.registerTool({
-      name: "work_amplitude_query",
-      label: "Amplitude Query",
+      name: "work_amplitude_tools",
+      label: "Amplitude Tools",
       description:
-        "Run an event segmentation query on Amplitude analytics. " +
-        "Returns time-series data for specified events with optional metric, interval, segments, and groupBy. " +
-        "Requires amplitude-mcp-sidecar to be configured.",
-      parameters: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          events: {
-            type: "string",
-            description: "Events JSON — Amplitude event segmentation format, e.g. [{\"event_type\":\"Page View\"}]",
-          },
-          metric: {
-            type: "string",
-            description: "Metric type: uniques, totals, avg, formula (default: uniques)",
-          },
-          start_date: { type: "string", description: "Start date (YYYYMMDD)" },
-          end_date: { type: "string", description: "End date (YYYYMMDD)" },
-          interval: {
-            type: "string",
-            description: "Time interval: -300000 (real-time), 1 (daily), 7 (weekly), 30 (monthly)",
-          },
-          segment_filters: {
-            type: "string",
-            description: "Segments JSON for filtering (Amplitude format)",
-          },
-          group_by: {
-            type: "string",
-            description: "Group by property JSON (Amplitude format)",
-          },
-        },
-        required: ["events", "start_date", "end_date"],
-      },
-      async execute(...rawArgs: unknown[]) {
-        const params = extractParams(rawArgs);
-        if (!amplitudeMcp) return err("Amplitude MCP sidecar is not configured");
-        try {
-          const args: Record<string, unknown> = {
-            e: param(params, "events") as string,
-            start: param(params, "start_date") as string,
-            end: param(params, "end_date") as string,
-          };
-          const metric = param(params, "metric") as string | undefined;
-          if (metric) args.m = metric;
-          const interval = param(params, "interval") as string | undefined;
-          if (interval) args.i = interval;
-          const segments = param(params, "segment_filters") as string | undefined;
-          if (segments) args.s = segments;
-          const groupBy = param(params, "group_by") as string | undefined;
-          if (groupBy) args.g = groupBy;
-
-          const result = await amplitudeMcp.call("amplitude_query", args);
-          return ok(result);
-        } catch (e) {
-          return err((e as Error).message);
-        }
-      },
-    });
-
-    api.registerTool({
-      name: "work_amplitude_chart",
-      label: "Amplitude Chart",
-      description:
-        "Get data from a saved Amplitude chart by its ID. " +
-        "Useful for fetching pre-configured dashboards and reports.",
-      parameters: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          chart_id: { type: "string", description: "Amplitude chart ID" },
-        },
-        required: ["chart_id"],
-      },
-      async execute(...rawArgs: unknown[]) {
-        const params = extractParams(rawArgs);
-        if (!amplitudeMcp) return err("Amplitude MCP sidecar is not configured");
-        try {
-          const chartId = param(params, "chart_id") as string;
-          if (!chartId) return err("chart_id is required");
-          const result = await amplitudeMcp.call("amplitude_chart", { chart_id: chartId });
-          return ok(result);
-        } catch (e) {
-          return err((e as Error).message);
-        }
-      },
-    });
-
-    api.registerTool({
-      name: "work_amplitude_overview",
-      label: "Amplitude Overview",
-      description:
-        "List available event types in Amplitude. Use this to understand the event taxonomy " +
-        "before running queries. Returns all tracked event types with descriptions.",
+        "List all available Amplitude MCP tools. Use this first to discover what analytics " +
+        "queries, charts, dashboards, and data operations are available. Returns tool names, " +
+        "descriptions, and their parameter schemas.",
       parameters: { type: "object", properties: {}, required: [] },
       async execute() {
-        if (!amplitudeMcp) return err("Amplitude MCP sidecar is not configured");
+        if (!amplitudeMcp) return err("Amplitude MCP is not configured");
         try {
-          const result = await amplitudeMcp.call("amplitude_list_events");
+          const result = await amplitudeMcp.listTools();
+          return ok(result.tools.map(t => ({
+            name: t.name,
+            description: t.description,
+            parameters: t.inputSchema,
+          })));
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "work_amplitude_call",
+      label: "Amplitude Call",
+      description:
+        "Call any Amplitude MCP tool by name. Use work_amplitude_tools first to discover " +
+        "available tools and their parameters. This is a passthrough to the official " +
+        "Amplitude MCP server.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          tool: {
+            type: "string",
+            description: "Name of the Amplitude MCP tool to call (from work_amplitude_tools)",
+          },
+          args: {
+            type: "object",
+            description: "Arguments to pass to the tool (see tool's parameter schema)",
+          },
+        },
+        required: ["tool"],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        if (!amplitudeMcp) return err("Amplitude MCP is not configured");
+        try {
+          const toolName = param(params, "tool") as string;
+          if (!toolName) return err("tool name is required");
+          const toolArgs = (param(params, "args") as Record<string, unknown>) || {};
+          const result = await amplitudeMcp.call(toolName, toolArgs);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);

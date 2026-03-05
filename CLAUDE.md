@@ -10,7 +10,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 ## Архитектура
 
-Пять сервисов + общая БД, деплой на Railway:
+Четыре сервиса + Amplitude (hosted) + общая БД, деплой на Railway:
 
 1. **OpenClaw Gateway** (`services/gateway/`) — Node.js 22, OpenClaw v2026.2.23 (глобально). Загружает плагин `work-agent` по пути. HTTP API + Telegram бот-канал + Slack (Socket Mode, DM + каналы). Конфиг: `services/gateway/openclaw.json`. Персона агента: `services/gateway/workspace/IDENTITY.md` и `services/gateway/workspace/USER.md`. Heartbeat: `services/gateway/workspace/HEARTBEAT.md`.
 
@@ -20,11 +20,11 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 4. **Google MCP Sidecar** (`services/google-mcp-sidecar/`) — Python 3.12, FastMCP + google-api-python-client. Gmail, Calendar, Drive через MCP (JSON-RPC 2.0, Streamable HTTP). Мультиаккаунт через `GOOGLE_WORKSPACE_ACCOUNTS` JSON. Порт 8000. Зависимости: `requirements.txt`.
 
-5. **Amplitude MCP Sidecar** (`services/amplitude-mcp-sidecar/`) — Python 3.12, FastMCP + httpx. Amplitude REST API v2/v3 через MCP. Read-only аналитика: event segmentation, funnels, retention, charts, taxonomy, user search. Auth: API Key + Secret Key (HTTP Basic Auth). Порт 8000. Зависимости: `requirements.txt`.
+5. **Amplitude** — подключение к официальному hosted MCP-серверу (`https://mcp.amplitude.com/mcp`) через OAuth 2.0 Bearer token. 25+ тулов (analytics, charts, cohorts, dashboards, experiments и др.). Auth: OAuth PKCE (Dynamic Client Registration), auto-refresh при 401. Токен-скрипт: `scripts/gen_amplitude_token.py`. Кастомный сайдкар (`services/amplitude-mcp-sidecar/`) сохранён в репо, но не деплоится.
 
 6. **PostgreSQL** — общий на Railway. Схема в `services/telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
 
-Плагин (`services/gateway/work-agent/index.ts`) регистрирует 18 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. MCP-клиент (`mcp-client.ts`) — класс `McpClient` с per-instance session state. Инстансы: `googleMcp` (Google) и `amplitudeMcp` (Amplitude). Telegram-данные из PostgreSQL через HTTP.
+Плагин (`services/gateway/work-agent/index.ts`) регистрирует 17 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. MCP-клиент (`mcp-client.ts`) — класс `McpClient` с per-instance session state и поддержкой auth providers (InternalAuthProvider для сайдкаров, OAuthBearerProvider для Amplitude). Инстансы: `googleMcp` (Google) и `amplitudeMcp` (Amplitude — official MCP server). Telegram-данные из PostgreSQL через HTTP.
 
 ## Persistent Storage
 

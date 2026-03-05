@@ -98,18 +98,6 @@ services:
       postgres:
         condition: service_healthy
 
-  amplitude-mcp-sidecar:
-    build:
-      context: ./services/amplitude-mcp-sidecar
-      dockerfile: Dockerfile
-    ports:
-      - "8004:8000"
-    environment:
-      PORT: "8000"
-      AMPLITUDE_API_KEY: ${AMPLITUDE_API_KEY}
-      AMPLITUDE_SECRET_KEY: ${AMPLITUDE_SECRET_KEY}
-      SIDECAR_AUTH_TOKEN: ${SIDECAR_AUTH_TOKEN}
-
   gateway:
     build:
       context: ./services/gateway
@@ -129,7 +117,9 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GOOGLE_MCP_URL: http://google-mcp-sidecar:8000
       TELEGRAM_SIDECAR_URL: http://telegram-sidecar:8000
-      AMPLITUDE_MCP_URL: http://amplitude-mcp-sidecar:8000
+      AMPLITUDE_OAUTH_CLIENT_ID: ${AMPLITUDE_OAUTH_CLIENT_ID}
+      AMPLITUDE_OAUTH_ACCESS_TOKEN: ${AMPLITUDE_OAUTH_ACCESS_TOKEN}
+      AMPLITUDE_OAUTH_REFRESH_TOKEN: ${AMPLITUDE_OAUTH_REFRESH_TOKEN}
       SIDECAR_AUTH_TOKEN: ${SIDECAR_AUTH_TOKEN}
     volumes:
       - gateway-state:/data/openclaw-state
@@ -141,8 +131,6 @@ services:
       google-mcp-sidecar:
         condition: service_started
       telegram-sidecar:
-        condition: service_started
-      amplitude-mcp-sidecar:
         condition: service_started
 
 volumes:

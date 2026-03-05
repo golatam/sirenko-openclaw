@@ -201,10 +201,14 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 
 ## Phase 8 — Аналитика, финансы и бэкапы
 
-### 8a — Amplitude MCP Server
-- [ ] Подключить Amplitude MCP Server к gateway (аналитика продуктов)
-- [ ] Добавить тулы для агента: просмотр чартов, когорт, дашбордов, query по данным
-- [ ] Настроить env vars (`AMPLITUDE_API_KEY`, etc.) в Railway
+### 8a — Amplitude MCP Server (Done v2, 2026-03-05)
+- [x] Подключение к официальному `mcp.amplitude.com/mcp` (OAuth 2.0 PKCE, не кастомный сайдкар)
+- [x] `McpClient` расширен: `McpAuthProvider` interface, `OAuthBearerProvider` (auto-refresh 401), `InternalAuthProvider`
+- [x] `work_amplitude_tools` — discovery 25+ тулов, `work_amplitude_call` — passthrough к любому тулу
+- [x] `scripts/gen_amplitude_token.py` — CLI скрипт для OAuth (Dynamic Client Registration, PKCE S256)
+- [x] Token state: `/data/openclaw-state/amplitude-oauth.json`, auto-refresh на volume
+- [x] Env vars: `AMPLITUDE_OAUTH_CLIENT_ID`, `AMPLITUDE_OAUTH_ACCESS_TOKEN`, `AMPLITUDE_OAUTH_REFRESH_TOKEN`
+- [x] Кастомный сайдкар (`services/amplitude-mcp-sidecar/`) сохранён в репо, не деплоится
 
 ### 8b — Google Analytics MCP Server
 - [ ] Подключить Google Analytics MCP Server к gateway

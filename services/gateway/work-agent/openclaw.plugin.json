@@ -20,7 +20,7 @@
       },
       "amplitudeMcpUrl": {
         "type": "string",
-        "description": "URL of amplitude-mcp-sidecar (falls back to AMPLITUDE_MCP_URL env var)"
+        "description": "Amplitude MCP server URL (default: https://mcp.amplitude.com). For legacy sidecar, set to sidecar URL."
       }
     }
   },
@@ -38,8 +38,8 @@
       "help": "API key from app.tavily.com for web search"
     },
     "amplitudeMcpUrl": {
-      "label": "Amplitude MCP Server URL",
-      "help": "HTTP endpoint of the amplitude-mcp-sidecar service"
+      "label": "Amplitude MCP URL",
+      "help": "Official: https://mcp.amplitude.com (OAuth). Legacy: custom sidecar URL."
     }
   }
 }

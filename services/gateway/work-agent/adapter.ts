@@ -17,6 +17,9 @@ export interface WorkAgentConfig {
   telegramSidecarUrl?: string;
   tavilyApiKey?: string;
   sidecarAuthToken?: string;
+  amplitudeOAuthClientId?: string;
+  amplitudeOAuthAccessToken?: string;
+  amplitudeOAuthRefreshToken?: string;
 }
 
 export interface ToolContext {
@@ -44,10 +47,13 @@ export function getPluginConfig(api: OpenClawPluginApi): WorkAgentConfig {
 
   return {
     mcpServerUrl: raw.mcpServerUrl || process.env.GOOGLE_MCP_URL,
-    amplitudeMcpUrl: raw.amplitudeMcpUrl || process.env.AMPLITUDE_MCP_URL,
+    amplitudeMcpUrl: raw.amplitudeMcpUrl || process.env.AMPLITUDE_MCP_URL || "https://mcp.amplitude.com",
     telegramSidecarUrl: raw.telegramSidecarUrl || process.env.TELEGRAM_SIDECAR_URL,
     tavilyApiKey: raw.tavilyApiKey || process.env.TAVILY_API_KEY,
     sidecarAuthToken: raw.sidecarAuthToken || process.env.SIDECAR_AUTH_TOKEN,
+    amplitudeOAuthClientId: process.env.AMPLITUDE_OAUTH_CLIENT_ID,
+    amplitudeOAuthAccessToken: process.env.AMPLITUDE_OAUTH_ACCESS_TOKEN,
+    amplitudeOAuthRefreshToken: process.env.AMPLITUDE_OAUTH_REFRESH_TOKEN,
   };
 }
 

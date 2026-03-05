@@ -23,36 +23,153 @@ async function parseMcpBody(res: Response): Promise<{ result?: unknown; error?: 
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Auth providers
+// ---------------------------------------------------------------------------
+
+export interface McpAuthProvider {
+  /** Return auth headers for requests. */
+  headers(): Record<string, string>;
+  /** Called on 401 — refresh credentials. Return true if refreshed and call should retry. */
+  onUnauthorized?(): Promise<boolean>;
+}
+
+/** Internal sidecar auth — X-Internal-Token header. */
+export class InternalAuthProvider implements McpAuthProvider {
+  constructor(private token: string) {}
+
+  headers(): Record<string, string> {
+    return { "X-Internal-Token": this.token };
+  }
+}
+
+/** OAuth Bearer token auth with auto-refresh on 401. */
+export interface OAuthBearerOpts {
+  accessToken: string;
+  refreshToken: string;
+  clientId: string;
+  tokenEndpoint: string;
+  /** Called after a successful token refresh — persist the new access token. */
+  onTokenRefreshed?: (newAccessToken: string) => void;
+}
+
+export class OAuthBearerProvider implements McpAuthProvider {
+  private accessToken: string;
+  private refreshToken: string;
+  private clientId: string;
+  private tokenEndpoint: string;
+  private onTokenRefreshed?: (newAccessToken: string) => void;
+  private refreshPromise?: Promise<boolean>;
+
+  constructor(opts: OAuthBearerOpts) {
+    this.accessToken = opts.accessToken;
+    this.refreshToken = opts.refreshToken;
+    this.clientId = opts.clientId;
+    this.tokenEndpoint = opts.tokenEndpoint;
+    this.onTokenRefreshed = opts.onTokenRefreshed;
+  }
+
+  headers(): Record<string, string> {
+    return { Authorization: `Bearer ${this.accessToken}` };
+  }
+
+  async onUnauthorized(): Promise<boolean> {
+    // Mutex: deduplicate concurrent refresh attempts
+    if (!this.refreshPromise) {
+      this.refreshPromise = this.doRefresh().finally(() => {
+        this.refreshPromise = undefined;
+      });
+    }
+    return this.refreshPromise;
+  }
+
+  private async doRefresh(): Promise<boolean> {
+    try {
+      console.error(`[mcp-client] OAuth refresh: POST ${this.tokenEndpoint}`);
+      const body = new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: this.clientId,
+        refresh_token: this.refreshToken,
+      });
+      const res = await fetchWithTimeout(this.tokenEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      });
+      if (!res.ok) {
+        console.error(`[mcp-client] OAuth refresh failed: HTTP ${res.status}`);
+        return false;
+      }
+      const data = (await res.json()) as Record<string, unknown>;
+      const newToken = data.access_token as string | undefined;
+      if (!newToken) {
+        console.error("[mcp-client] OAuth refresh: no access_token in response");
+        return false;
+      }
+      this.accessToken = newToken;
+      if (data.refresh_token) {
+        this.refreshToken = data.refresh_token as string;
+      }
+      console.error("[mcp-client] OAuth refresh: success, new access_token obtained");
+      this.onTokenRefreshed?.(this.accessToken);
+      return true;
+    } catch (e) {
+      console.error(`[mcp-client] OAuth refresh error: ${(e as Error).message}`);
+      return false;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// McpClient
+// ---------------------------------------------------------------------------
+
 export class McpClient {
   private name: string;
   private url: string;
   private sessionId?: string;
   private initPromise?: Promise<void>;
-  private authToken?: string;
+  private auth?: McpAuthProvider;
 
-  constructor(name: string, url: string, authToken?: string) {
+  /**
+   * @param name — label for logging
+   * @param url — base URL of the MCP server
+   * @param auth — string (legacy X-Internal-Token) or McpAuthProvider
+   */
+  constructor(name: string, url: string, auth?: string | McpAuthProvider) {
     this.name = name;
     this.url = url;
-    this.authToken = authToken;
+    if (typeof auth === "string") {
+      this.auth = new InternalAuthProvider(auth);
+    } else {
+      this.auth = auth;
+    }
   }
 
   getUrl(): string {
     return this.url;
   }
 
-  private headers(): Record<string, string> {
+  private requestHeaders(): Record<string, string> {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
     };
-    if (this.authToken) h["X-Internal-Token"] = this.authToken;
+    if (this.auth) Object.assign(h, this.auth.headers());
     return h;
   }
 
+  private mcpEndpoint(): string {
+    // Official MCP servers use the URL as-is (e.g. https://mcp.amplitude.com/mcp)
+    // Our sidecars append /mcp to the base URL
+    const u = this.url;
+    return u.endsWith("/mcp") ? u : `${u}/mcp`;
+  }
+
   private async init(): Promise<void> {
-    const res = await fetchWithTimeout(`${this.url}/mcp`, {
+    const res = await fetchWithTimeout(this.mcpEndpoint(), {
       method: "POST",
-      headers: this.headers(),
+      headers: this.requestHeaders(),
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
@@ -89,25 +206,40 @@ export class McpClient {
     await this.initPromise;
   }
 
-  async call(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
+  /** Send a JSON-RPC request and handle session/auth errors. */
+  private async jsonRpc(method: string, params: Record<string, unknown>): Promise<unknown> {
     await this.ensureSession();
 
-    const doCall = async (): Promise<Response> => {
-      const hdrs = this.headers();
+    const doRequest = async (): Promise<Response> => {
+      const hdrs = this.requestHeaders();
       if (this.sessionId) hdrs["Mcp-Session-Id"] = this.sessionId;
-      return fetchWithTimeout(`${this.url}/mcp`, {
+      return fetchWithTimeout(this.mcpEndpoint(), {
         method: "POST",
         headers: hdrs,
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: Date.now(),
-          method: "tools/call",
-          params: { name: toolName, arguments: args },
+          method,
+          params,
         }),
       });
     };
 
-    let res = await doCall();
+    let res = await doRequest();
+
+    // Handle 401 — try OAuth refresh + retry
+    if (res.status === 401 && this.auth?.onUnauthorized) {
+      console.error(`[work-agent] MCP[${this.name}] 401, attempting token refresh...`);
+      const refreshed = await this.auth.onUnauthorized();
+      if (refreshed) {
+        // Reset session — new token may need new session
+        this.sessionId = undefined;
+        this.initPromise = undefined;
+        await this.ensureSession();
+        res = await doRequest();
+      }
+    }
+
     if (!res.ok) {
       // Session expired — reset and retry once
       if (res.status === 404 || res.status === 400) {
@@ -115,7 +247,7 @@ export class McpClient {
         this.sessionId = undefined;
         this.initPromise = undefined;
         await this.ensureSession();
-        res = await doCall();
+        res = await doRequest();
         if (!res.ok) {
           throw new Error(`MCP[${this.name}] HTTP ${res.status}: ${await res.text()}`);
         }
@@ -126,5 +258,16 @@ export class McpClient {
     const json = await parseMcpBody(res);
     if (json.error) throw new Error(json.error.message);
     return json.result;
+  }
+
+  /** Call a tool on the MCP server. */
+  async call(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
+    return this.jsonRpc("tools/call", { name: toolName, arguments: args });
+  }
+
+  /** List available tools on the MCP server. */
+  async listTools(): Promise<{ tools: Array<{ name: string; description?: string; inputSchema?: unknown }> }> {
+    const result = await this.jsonRpc("tools/list", {});
+    return result as { tools: Array<{ name: string; description?: string; inputSchema?: unknown }> };
   }
 }

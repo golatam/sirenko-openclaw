@@ -25,6 +25,9 @@ Services:
 - `Postgres`
 - `Redis`
 
+External:
+- Amplitude — official MCP server (`mcp.amplitude.com/mcp`), OAuth 2.0, 25+ тулов
+
 Volumes:
 - `gateway-volume` → `/data/openclaw-state` (workspace, memory, cron, sessions)
 - `telegram-sidecar-volume` → `/data` (Telethon sessions)
@@ -52,7 +55,7 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 15 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send, health check, backup)
+- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 17 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send, health check, backup, Amplitude)
 - `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
 - `work_slack_send` — отправка сообщений в Slack (DM по email или channel ID); используется cron-задачами
 - 30s AbortController таймаут на все fetch-вызовы
@@ -143,6 +146,15 @@ Gateway domain:
 - **9c Reliability**: message dedup (`UNIQUE` partial index + `ON CONFLICT DO NOTHING`); supervisor loop с exponential backoff в telegram-sidecar; graceful shutdown (SIGTERM handlers) во всех сайдкарах; `STOPSIGNAL SIGTERM` во всех Dockerfiles
 - **Voice retry**: транскрипция голосовых с retry (3 попытки, backoff 3s→6s→12s) при Groq 429 rate limit (оба сайдкара)
 
+### Amplitude — Official MCP Server (Phase 8a v2)
+- Заменён кастомный amplitude-mcp-sidecar на подключение к официальному `mcp.amplitude.com/mcp`
+- OAuth 2.0 PKCE: Dynamic Client Registration, `offline_access` scope, auto-refresh при 401
+- `McpClient` расширен: `McpAuthProvider` интерфейс, `OAuthBearerProvider` + `InternalAuthProvider`
+- Два тула: `work_amplitude_tools` (discovery 25+ тулов) + `work_amplitude_call` (passthrough)
+- Token state: `/data/openclaw-state/amplitude-oauth.json` — access_token переживает рестарты
+- Скрипт: `scripts/gen_amplitude_token.py` (Python stdlib, без pip зависимостей)
+- Env vars: `AMPLITUDE_OAUTH_CLIENT_ID`, `AMPLITUDE_OAUTH_ACCESS_TOKEN`, `AMPLITUDE_OAUTH_REFRESH_TOKEN`
+
 ## Pending
 - [x] Проверить end-to-end: отправка письма, создание события (2026-02-25)
 - [x] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway (2026-02-25)
@@ -187,6 +199,7 @@ services/
     Dockerfile
 scripts/
   smoke-test.sh            — curl health endpoints для всех сервисов
+  gen_amplitude_token.py   — OAuth token generator для Amplitude MCP
 docker-compose.yml
 Makefile
 CLAUDE.md, PLAN.md, PROJECT_STATUS.md, .env.example
