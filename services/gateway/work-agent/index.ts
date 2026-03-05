@@ -296,7 +296,7 @@ const BACKUP_RETENTION_DAYS = 14;
 function loadLastBackupTime(): number | null {
   try {
     const data = JSON.parse(readFileSync(BACKUP_STATE_FILE, "utf-8"));
-    return data.lastBackupMs || null;
+    return data.lastSuccessMs || null;
   } catch {
     return null;
   }
@@ -305,8 +305,14 @@ function loadLastBackupTime(): number | null {
 function saveBackupStatus(result: BackupResult): void {
   try {
     mkdirSync(dirname(BACKUP_STATE_FILE), { recursive: true });
+    const prev: Record<string, unknown> = {};
+    try {
+      Object.assign(prev, JSON.parse(readFileSync(BACKUP_STATE_FILE, "utf-8")));
+    } catch {}
     writeFileSync(BACKUP_STATE_FILE, JSON.stringify({
-      lastBackupMs: Date.now(),
+      ...prev,
+      ...(result.ok ? { lastSuccessMs: Date.now() } : {}),
+      lastAttemptMs: Date.now(),
       lastResult: result,
       updatedAt: new Date().toISOString(),
     }));
