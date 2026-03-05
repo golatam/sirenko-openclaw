@@ -1526,6 +1526,22 @@ const WorkAgentPlugin = {
               text: `:warning: *Backup completed with errors*\n${result.errors.join("\n")}\n_${result.timestamp}_`,
             });
           } catch {}
+        } else {
+          // Alert on success
+          try {
+            const parts: string[] = [];
+            for (const [key, step] of Object.entries({ pg: result.postgres, mem: result.memory, wa: result.whatsapp })) {
+              if (step?.ok && step.size_bytes) {
+                const kb = Math.round(step.size_bytes / 1024);
+                parts.push(`${key}: ${kb} KB`);
+              }
+            }
+            const cleaned = result.cleanup?.deleted ? `, cleaned ${result.cleanup.deleted} old` : "";
+            await slackApi("chat.postMessage", {
+              channel: SLACK_ALERT_CHANNEL,
+              text: `:white_check_mark: *Backup OK* — ${parts.join(", ")}${cleaned}\n_${result.timestamp}_`,
+            });
+          } catch {}
         }
 
         console.error(`[work-agent] backup: done, ok=${result.ok}, errors=${result.errors.length}`);
