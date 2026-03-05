@@ -81,7 +81,7 @@ Gateway domain:
 - `POST /search` — full-text поиск по PostgreSQL (GIN индекс, `plainto_tsquery`)
 - `GET /health` — health check
 - Плагин вызывает сайдкар через `fetchWithTimeout()` (аналог google-mcp-sidecar)
-- 4300+ сообщений в базе, 3 аккаунта (TG1/TG2/TG3 StringSessions)
+- 4300+ сообщений в базе, 3 аккаунта (TG1/TG2/TG3 StringSessions, все connected)
 - `TELEGRAM_SIDECAR_URL` в gateway env vars → приватная сеть Railway
 
 ### WhatsApp
@@ -133,12 +133,14 @@ Gateway domain:
 
 ### Automated Backups (Phase 8d)
 - Google Drive as backup storage (existing OAuth, zero new deps)
-- `drive_upload` + `drive_delete` MCP-тулы в google-mcp-sidecar
+- `drive_upload` + `drive_delete` MCP-тулы в google-mcp-sidecar (10 тулов total)
 - `backup.ts` модуль: pg_dump → gzip, tar memory files, fetch WA auth state
 - Periodic task: check every 6h, backup if >23h since last; 14-day retention with auto-cleanup
 - `work_backup` тул для ручного запуска
-- Slack alert при ошибках, silent при успехе
-- State: `/data/openclaw-state/backup-status.json`
+- Slack alert при ошибках и при успехе
+- State: `/data/openclaw-state/backup-status.json` (`lastSuccessMs` — только при успешном бэкапе)
+- Первый успешный бэкап: 2026-03-05T18:29:57 (PG 5.8MB + Memory 4.1KB)
+- Drive folder: [OpenClaw Backups](https://drive.google.com/drive/folders/1-Q_l77R7qgrilzQT5RFNGqnUNo_h8hmf)
 
 ### Security & Reliability (Phase 9)
 - **9a Bugfixes**: `work_list_calendars` вызывает правильный MCP-тул; WhatsApp health status корректно показывает `error`
@@ -209,5 +211,7 @@ CLAUDE.md, PLAN.md, PROJECT_STATUS.md, .env.example
 - Telegram uses MTProto user accounts via sidecar
 - WhatsApp uses Baileys (WhatsApp Web emulation) via sidecar, QR pairing
 - WhatsApp sidecar domain: `https://whatsapp-sidecar-production-93a3.up.railway.app`
+- Telegram sidecar domain: `https://telegram-sidecar-production-613f.up.railway.app`
 - StringSession approach chosen for Railway (no console)
 - Sensitive secrets stored only in Railway variables, never committed
+- **Railway repo connections**: все 4 сервиса подключены к `golatam/sirenko-openclaw` (branch `main`) через `serviceConnect` GraphQL. Push в main триггерит auto-deploy для сервисов, чей root directory содержит изменённые файлы
