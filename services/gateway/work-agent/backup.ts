@@ -9,6 +9,23 @@ import type { McpClient } from "./mcp-client.js";
 import { fetchWithTimeout } from "./utils.js";
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Extract text content from MCP tools/call result ({content: [{type, text}]}). */
+function extractMcpText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object") {
+    const r = result as { content?: Array<{ type: string; text: string }> };
+    if (Array.isArray(r.content)) {
+      const item = r.content.find((c) => c.type === "text");
+      if (item?.text) return item.text;
+    }
+  }
+  return JSON.stringify(result);
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -116,9 +133,8 @@ export async function uploadToDrive(
     mime_type: mimeType,
   });
 
-  // MCP tool returns JSON string — parse if needed
-  const parsed = typeof result === "string" ? JSON.parse(result) : result;
-  return parsed as DriveUploadResult;
+  // MCP tools/call wraps result in {content: [{type: "text", text: "..."}]}
+  return JSON.parse(extractMcpText(result)) as DriveUploadResult;
 }
 
 /** Delete old backups beyond retention period. */
@@ -139,10 +155,10 @@ export async function cleanupOldBackups(
     max_results: 50,
   });
 
-  const parsed =
-    typeof searchResult === "string" ? JSON.parse(searchResult) : searchResult;
-  const files = (parsed as { files?: Array<{ id: string; name: string }> })
-    .files || [];
+  const parsed = JSON.parse(extractMcpText(searchResult)) as {
+    files?: Array<{ id: string; name: string }>;
+  };
+  const files = parsed.files || [];
 
   let deleted = 0;
   for (const file of files) {
