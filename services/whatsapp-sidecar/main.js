@@ -202,6 +202,8 @@ let reconnectAttempts = 0;
 let isConnected = false;
 let messageCount = 0;
 let lastQr = null;
+let currentSock = null;
+let shuttingDown = false;
 const startTime = Date.now();
 
 async function startWhatsApp() {
@@ -219,6 +221,7 @@ async function startWhatsApp() {
     syncFullHistory: SYNC_HISTORY,
   });
 
+  currentSock = sock;
   sock.ev.on("creds.update", saveCreds);
 
   // --- Connection state ---
@@ -250,7 +253,7 @@ async function startWhatsApp() {
 
       console.error(`[WA] Disconnected (status=${statusCode}). Reconnect: ${shouldReconnect}`);
 
-      if (shouldReconnect) {
+      if (shouldReconnect && !shuttingDown) {
         reconnectAttempts++;
         const delay = Math.min(60_000, 1000 * Math.pow(2, reconnectAttempts));
         console.error(`[WA] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
@@ -438,6 +441,38 @@ async function main() {
 
   await startWhatsApp();
 }
+
+// ---------------------------------------------------------------------------
+// Graceful shutdown
+// ---------------------------------------------------------------------------
+
+function gracefulShutdown(sig) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.error(`[WA] ${sig} received — shutting down`);
+
+  // Force exit safety net
+  setTimeout(() => {
+    console.error("[WA] Force exit after timeout");
+    process.exit(1);
+  }, 8000).unref();
+
+  server.close(() => console.error("[WA] HTTP server closed"));
+  if (currentSock) {
+    try { currentSock.end(undefined); } catch {}
+    console.error("[WA] WhatsApp socket closed");
+  }
+  pool.end()
+    .then(() => console.error("[WA] DB pool closed"))
+    .catch((e) => console.error("[WA] DB pool close error:", e.message))
+    .finally(() => {
+      console.error("[WA] Shutdown complete");
+      process.exit(0);
+    });
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 main().catch((e) => {
   console.error("[WA] Fatal:", e);

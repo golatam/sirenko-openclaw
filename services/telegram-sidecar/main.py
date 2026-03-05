@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import signal
 import sys
 import time
 from dataclasses import dataclass
@@ -17,6 +18,8 @@ load_dotenv()
 
 _start_time = time.monotonic()
 _client_status: dict[str, str] = {}  # label -> "connected" | "disconnected" | "failed"
+_shutdown_event = asyncio.Event()
+_active_clients: dict[str, TelegramClient] = {}  # label -> client (for disconnect on shutdown)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
@@ -242,50 +245,89 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
     if sync_history_on_start:
         await sync_history(client, pool, account, per_chat)
 
+    _active_clients[account.label] = client
+
     @client.on(events.NewMessage)
     async def handle_new_message(event: events.NewMessage.Event) -> None:
-        sender = await event.get_sender()
-        sender_id = str(getattr(sender, "id", "")) if sender else None
-        sender_name = getattr(sender, "first_name", None) or getattr(sender, "title", None)
-        chat = await event.get_chat()
-        thread_id = str(getattr(chat, "id", "")) if chat else None
-        text = event.raw_text
-        metadata = {
-            "chat_title": getattr(chat, "title", None),
-            "chat_username": getattr(chat, "username", None),
-            "message_id": event.message.id,
-        }
+        try:
+            sender = await event.get_sender()
+            sender_id = str(getattr(sender, "id", "")) if sender else None
+            sender_name = getattr(sender, "first_name", None) or getattr(sender, "title", None)
+            chat = await event.get_chat()
+            thread_id = str(getattr(chat, "id", "")) if chat else None
+            text = event.raw_text
+            metadata = {
+                "chat_title": getattr(chat, "title", None),
+                "chat_username": getattr(chat, "username", None),
+                "message_id": event.message.id,
+            }
 
-        if is_voice_message(event.message):
-            metadata["media_type"] = "voice"
-            try:
-                audio_bytes = await event.message.download_media(file=bytes)
-                if audio_bytes:
-                    transcript = await transcribe_audio(audio_bytes)
-                    if transcript:
-                        text = transcript
-                        metadata["transcribed"] = True
-                        print(f"[TG] Transcribed voice ({len(audio_bytes)} bytes) → {len(transcript)} chars", flush=True, file=sys.stderr)
+            if is_voice_message(event.message):
+                metadata["media_type"] = "voice"
+                try:
+                    audio_bytes = await event.message.download_media(file=bytes)
+                    if audio_bytes:
+                        transcript = await transcribe_audio(audio_bytes)
+                        if transcript:
+                            text = transcript
+                            metadata["transcribed"] = True
+                            print(f"[TG] Transcribed voice ({len(audio_bytes)} bytes) → {len(transcript)} chars", flush=True, file=sys.stderr)
+                        else:
+                            metadata["transcription_failed"] = True
                     else:
                         metadata["transcription_failed"] = True
-                else:
+                except Exception as e:
+                    print(f"[TG] Voice download failed: {e}", flush=True, file=sys.stderr)
                     metadata["transcription_failed"] = True
-            except Exception as e:
-                print(f"[TG] Voice download failed: {e}", flush=True, file=sys.stderr)
-                metadata["transcription_failed"] = True
 
-        await insert_message(
-            pool,
-            account.label,
-            thread_id,
-            sender_id,
-            sender_name,
-            text,
-            event.message.date or utc_now(),
-            metadata,
-        )
+            await insert_message(
+                pool,
+                account.label,
+                thread_id,
+                sender_id,
+                sender_name,
+                text,
+                event.message.date or utc_now(),
+                metadata,
+            )
+        except Exception as e:
+            print(f"[TG] {account.label} handler error: {e}", flush=True, file=sys.stderr)
 
-    await client.run_until_disconnected()
+    try:
+        await client.run_until_disconnected()
+    finally:
+        _client_status[account.label] = "disconnected"
+        _active_clients.pop(account.label, None)
+
+
+async def supervise_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_on_start: bool, per_chat: int) -> None:
+    """Supervisor loop: restart run_account() with exponential backoff on failure."""
+    delay = 5
+    max_delay = 300
+
+    while not _shutdown_event.is_set():
+        started_at = time.monotonic()
+        try:
+            await run_account(pool, account, sync_history_on_start, per_chat)
+        except Exception as e:
+            print(f"[TG] {account.label} crashed: {e}", flush=True, file=sys.stderr)
+
+        if _shutdown_event.is_set():
+            break
+
+        # Reset backoff if the account ran stably (>60s)
+        elapsed = time.monotonic() - started_at
+        if elapsed > 60:
+            delay = 5
+
+        print(f"[TG] {account.label} will restart in {delay}s", flush=True, file=sys.stderr)
+        try:
+            await asyncio.wait_for(_shutdown_event.wait(), timeout=delay)
+            break  # shutdown signalled during wait
+        except asyncio.TimeoutError:
+            pass  # delay elapsed, retry
+
+        delay = min(delay * 2, max_delay)
 
 
 ## ---------------------------------------------------------------------------
@@ -501,13 +543,50 @@ async def main() -> None:
     await site.start()
     print(f"[HTTP] Search API listening on port {http_port}", flush=True, file=sys.stderr)
 
-    # Start Telethon clients (fire-and-forget — each runs independently)
+    # Start supervised Telethon clients
     print(f"[TG] Starting {len(accounts)} account(s)...", flush=True, file=sys.stderr)
+    tasks = []
     for account in accounts:
-        asyncio.create_task(run_account(pool, account, sync_history_on_start, per_chat))
+        tasks.append(asyncio.create_task(
+            supervise_account(pool, account, sync_history_on_start, per_chat),
+            name=f"supervisor-{account.label}",
+        ))
 
-    # Keep process alive for HTTP search API
-    await asyncio.Event().wait()
+    # Register SIGTERM/SIGINT handlers
+    loop = asyncio.get_running_loop()
+    def _signal_handler():
+        if not _shutdown_event.is_set():
+            print("[TG] Shutdown signal received", flush=True, file=sys.stderr)
+            _shutdown_event.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, _signal_handler)
+
+    # Wait for shutdown signal
+    await _shutdown_event.wait()
+
+    # Graceful shutdown sequence
+    print("[TG] Disconnecting clients...", flush=True, file=sys.stderr)
+    for label, client in list(_active_clients.items()):
+        try:
+            await asyncio.wait_for(client.disconnect(), timeout=5)
+            print(f"[TG] {label} disconnected", flush=True, file=sys.stderr)
+        except Exception as e:
+            print(f"[TG] {label} disconnect error: {e}", flush=True, file=sys.stderr)
+
+    # Cancel and await supervisor tasks
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Cleanup HTTP server
+    await runner.cleanup()
+    print("[TG] HTTP server stopped", flush=True, file=sys.stderr)
+
+    # Close DB pool
+    await pool.close()
+    print("[TG] DB pool closed", flush=True, file=sys.stderr)
+    print("[TG] Shutdown complete", flush=True, file=sys.stderr)
 
 
 if __name__ == "__main__":

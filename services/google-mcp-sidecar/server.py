@@ -11,6 +11,7 @@ Env vars:
   PORT                           — HTTP port (default 8000)
 """
 
+import atexit
 import base64
 import json
 import os
@@ -688,6 +689,16 @@ def _host_allowlist(self, host: str) -> bool:
 TransportSecurityMiddleware._validate_host = _host_allowlist
 
 app = _normalize_args_app(mcp.streamable_http_app())
+
+
+def _cleanup():
+    n_creds = len(_creds_cache)
+    n_svc = len(_service_cache)
+    _creds_cache.clear()
+    _service_cache.clear()
+    print(f"[SERVER] Cleanup: cleared {n_creds} creds, {n_svc} services", flush=True, file=sys.stderr)
+
+atexit.register(_cleanup)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))

@@ -15,4 +15,5 @@ ENV NODE_ENV=production
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl -sf http://localhost:${PORT:-8080}/health || exit 1
 
+STOPSIGNAL SIGTERM
 CMD ["node", "main.js"]

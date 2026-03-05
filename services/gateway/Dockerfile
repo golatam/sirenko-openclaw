@@ -22,4 +22,5 @@ RUN chmod +x /app/entrypoint.sh
 HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
   CMD curl -sf http://localhost:${PORT:-18789}/ || exit 1
 
+STOPSIGNAL SIGTERM
 CMD ["/app/entrypoint.sh"]

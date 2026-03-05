@@ -15,7 +15,8 @@ COPY gen_token.py /app/gen_token.py
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -sf -X POST http://localhost:${PORT:-8000}/mcp -H "Content-Type: application/json" -H "Accept: application/json" -d '{"jsonrpc":"2.0","id":0,"method":"tools/list","params":{}}' || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -sf http://localhost:${PORT:-8000}/health || exit 1
 
+STOPSIGNAL SIGTERM
 CMD ["python", "server.py"]
