@@ -549,7 +549,7 @@ const WorkAgentPlugin = {
           const args: Record<string, unknown> = {};
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const result = await mcpCall("calendar_get_events", args);
+          const result = await mcpCall("calendar_list_calendars", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);

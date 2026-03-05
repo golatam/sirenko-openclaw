@@ -92,7 +92,10 @@ async function insertMessage({ threadId, senderId, senderName, text, ts, metadat
   if (!text && !metadata?.media_type) return; // skip media-only / empty (but keep voice)
   await pool.query(
     `INSERT INTO messages (source, account_label, thread_id, sender_id, sender_name, text, ts, metadata_json)
-     VALUES ('whatsapp', $1, $2, $3, $4, $5, $6, $7)`,
+     VALUES ('whatsapp', $1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (source, account_label, thread_id, (metadata_json->>'message_id'))
+       WHERE metadata_json->>'message_id' IS NOT NULL
+       DO NOTHING`,
     [ACCOUNT_LABEL, threadId, senderId, senderName, text, ts, JSON.stringify(metadata)],
   );
 }
@@ -355,7 +358,7 @@ const server = createServer(async (req, res) => {
       if (overall === "ok") overall = "degraded";
     } else {
       checks.whatsapp = { status: "error", detail: "disconnected", account: ACCOUNT_LABEL };
-      overall = "degraded";
+      overall = "error";
     }
 
     const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);

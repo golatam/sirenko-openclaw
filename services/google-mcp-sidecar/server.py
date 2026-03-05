@@ -322,6 +322,46 @@ def _calendar_events_single(account_key: str, calendar_id: str,
 
 
 @mcp.tool()
+def calendar_list_calendars(account: str = "") -> str:
+    """List all calendars on the user's calendar list.
+
+    When account is empty, returns calendars from ALL connected accounts.
+
+    Args:
+        account: Gmail account email. Empty = all accounts.
+    """
+    def _list_single(account_key: str) -> list[dict]:
+        cal = _get_service(account_key, "calendar", "v3")
+        resp = cal.calendarList().list().execute()
+        calendars = []
+        for item in resp.get("items", []):
+            calendars.append({
+                "id": item.get("id"),
+                "summary": item.get("summary", ""),
+                "description": item.get("description", ""),
+                "primary": item.get("primary", False),
+                "accessRole": item.get("accessRole", ""),
+                "backgroundColor": item.get("backgroundColor", ""),
+                "timeZone": item.get("timeZone", ""),
+                "account": account_key,
+            })
+        return calendars
+
+    if account:
+        results = _list_single(account)
+        return json.dumps({"calendars": results, "total": len(results)})
+
+    all_results: list[dict] = []
+    for acct in _accounts:
+        try:
+            all_results.extend(_list_single(acct))
+        except Exception as e:
+            print(f"[CALENDAR_LIST] Error for {acct}: {e}", flush=True, file=sys.stderr)
+
+    return json.dumps({"calendars": all_results, "total": len(all_results)})
+
+
+@mcp.tool()
 def calendar_get_events(calendar_id: str = "primary", time_min: str = "",
                         time_max: str = "", max_results: int = 10,
                         q: str = "", account: str = "") -> str:

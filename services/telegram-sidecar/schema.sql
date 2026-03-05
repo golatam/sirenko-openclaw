@@ -25,3 +25,7 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS messages_source_ts_idx ON messages (source, ts DESC);
 CREATE INDEX IF NOT EXISTS messages_account_ts_idx ON messages (account_label, ts DESC);
 CREATE INDEX IF NOT EXISTS messages_text_idx ON messages USING GIN (to_tsvector('simple', coalesce(text, '')));
+
+CREATE UNIQUE INDEX IF NOT EXISTS messages_dedup_idx
+  ON messages (source, account_label, thread_id, (metadata_json->>'message_id'))
+  WHERE metadata_json->>'message_id' IS NOT NULL;

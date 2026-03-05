@@ -101,6 +101,9 @@ async def insert_message(
               (source, account_label, thread_id, sender_id, sender_name, text, ts, metadata_json)
             VALUES
               ('telegram', $1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (source, account_label, thread_id, (metadata_json->>'message_id'))
+              WHERE metadata_json->>'message_id' IS NOT NULL
+              DO NOTHING
             """,
             account_label,
             thread_id,
@@ -470,6 +473,10 @@ async def main() -> None:
             CREATE INDEX IF NOT EXISTS messages_source_ts_idx ON messages (source, ts DESC);
             CREATE INDEX IF NOT EXISTS messages_account_ts_idx ON messages (account_label, ts DESC);
             CREATE INDEX IF NOT EXISTS messages_text_idx ON messages USING GIN (to_tsvector('simple', coalesce(text, '')));
+
+            CREATE UNIQUE INDEX IF NOT EXISTS messages_dedup_idx
+              ON messages (source, account_label, thread_id, (metadata_json->>'message_id'))
+              WHERE metadata_json->>'message_id' IS NOT NULL;
             """
         )
 
