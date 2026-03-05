@@ -7,6 +7,7 @@ import { dirname } from "path";
 
 let _tgSidecarUrl: string | undefined;
 let _tavilyApiKey: string | undefined;
+let _sidecarAuthToken: string | undefined;
 
 // ---------------------------------------------------------------------------
 // Tavily web search — lightweight REST API client
@@ -54,9 +55,11 @@ async function queryMessages(
   if (opts.limit) body.limit = opts.limit;
 
   console.error(`[work-agent] queryMessages: ${_tgSidecarUrl}/search source=${opts.source || "all"}`);
+  const hdrs: Record<string, string> = { "Content-Type": "application/json" };
+  if (_sidecarAuthToken) hdrs["X-Internal-Token"] = _sidecarAuthToken;
   const res = await fetchWithTimeout(`${_tgSidecarUrl}/search`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: hdrs,
     body: JSON.stringify(body),
   });
 
@@ -283,10 +286,11 @@ const WorkAgentPlugin = {
 
   register(api: OpenClawPluginApi) {
     const config = getPluginConfig(api);
-    if (config.mcpServerUrl) configureMcp(config.mcpServerUrl);
+    if (config.mcpServerUrl) configureMcp(config.mcpServerUrl, config.sidecarAuthToken);
     _tgSidecarUrl = config.telegramSidecarUrl;
     _tavilyApiKey = config.tavilyApiKey;
-    console.error(`[work-agent] mcpUrl=${config.mcpServerUrl} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"}`);
+    _sidecarAuthToken = config.sidecarAuthToken;
+    console.error(`[work-agent] mcpUrl=${config.mcpServerUrl} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"}`);
 
     // -----------------------------------------------------------------------
     // Gmail tools

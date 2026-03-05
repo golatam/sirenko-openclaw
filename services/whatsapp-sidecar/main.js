@@ -29,6 +29,7 @@ const SYNC_HISTORY = process.env.WA_SYNC_HISTORY === "1"; // ingest history sync
 const logger = pino({ level: process.env.LOG_LEVEL || "warn" });
 
 const FORCE_REAUTH = process.env.WA_FORCE_REAUTH === "1";
+const SIDECAR_AUTH_TOKEN = process.env.SIDECAR_AUTH_TOKEN || "";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
@@ -371,7 +372,17 @@ const server = createServer(async (req, res) => {
     }));
     return;
   }
-  if (req.method === "GET" && req.url === "/qr") {
+  if (req.method === "GET" && (req.url === "/qr" || req.url?.startsWith("/qr?"))) {
+    // Auth check — /qr allows device pairing, must be protected
+    if (SIDECAR_AUTH_TOKEN) {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const token = req.headers["x-internal-token"] || url.searchParams.get("token") || "";
+      if (token !== SIDECAR_AUTH_TOKEN) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+    }
     if (isConnected) {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end("<html><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>WhatsApp Connected</h1><p>Already paired and running.</p></body></html>");

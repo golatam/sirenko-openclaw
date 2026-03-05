@@ -418,8 +418,20 @@ async def handle_health(request: web.Request) -> web.Response:
     })
 
 
+_SIDECAR_AUTH_TOKEN = os.getenv("SIDECAR_AUTH_TOKEN", "")
+
+@web.middleware
+async def auth_middleware(request: web.Request, handler):
+    # /health stays open for Docker HEALTHCHECK
+    if _SIDECAR_AUTH_TOKEN and request.path != "/health":
+        token = request.headers.get("X-Internal-Token", "")
+        if token != _SIDECAR_AUTH_TOKEN:
+            return web.json_response({"error": "unauthorized"}, status=401)
+    return await handler(request)
+
+
 def create_search_app(pool: asyncpg.Pool, account_count: int) -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[auth_middleware])
     app["pool"] = pool
     app["account_count"] = account_count
     app.router.add_post("/search", handle_search)

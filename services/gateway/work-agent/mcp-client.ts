@@ -7,10 +7,12 @@ import { fetchWithTimeout, sleep, MCP_TIMEOUT_MS } from "./utils.js";
 let _mcpUrl: string | undefined;
 let _mcpSessionId: string | undefined;
 let _mcpInitPromise: Promise<void> | undefined;
+let _mcpAuthToken: string | undefined;
 
 /** Set the MCP server URL. Must be called before any mcpCall(). */
-export function configureMcp(url: string): void {
+export function configureMcp(url: string, authToken?: string): void {
   _mcpUrl = url;
+  _mcpAuthToken = authToken;
 }
 
 /** Get the configured MCP server URL (for health checks). */
@@ -41,13 +43,19 @@ async function parseMcpBody(res: Response): Promise<{ result?: unknown; error?: 
   return res.json();
 }
 
+function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+  };
+  if (_mcpAuthToken) h["X-Internal-Token"] = _mcpAuthToken;
+  return h;
+}
+
 async function mcpInit(): Promise<void> {
   const res = await fetchWithTimeout(`${mcpUrl()}/mcp`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    },
+    headers: authHeaders(),
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
@@ -88,10 +96,7 @@ export async function mcpCall(toolName: string, args: Record<string, unknown> = 
   await ensureMcpSession();
 
   const doCall = async (): Promise<Response> => {
-    const hdrs: Record<string, string> = {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    };
+    const hdrs = authHeaders();
     if (_mcpSessionId) hdrs["Mcp-Session-Id"] = _mcpSessionId;
     return fetchWithTimeout(`${mcpUrl()}/mcp`, {
       method: "POST",

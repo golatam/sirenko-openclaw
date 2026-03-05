@@ -73,18 +73,19 @@ _load_accounts()
 
 _start_time = time.monotonic()
 
+_SIDECAR_AUTH_TOKEN = os.environ.get("SIDECAR_AUTH_TOKEN", "")
+
 
 def _resolve_account(account: str | None) -> str:
     """Resolve account email to a key in _accounts."""
     if account and account in _accounts:
         return account
-    # Return first account if none specified or account not found
+    if account and account not in _accounts:
+        available = ", ".join(_accounts.keys())
+        raise ValueError(f"Account '{account}' not found. Available: {available}")
+    # No account specified — return first
     if _accounts:
-        first = next(iter(_accounts))
-        if account and account not in _accounts:
-            print(f"[AUTH] Account '{account}' not found, falling back to '{first}'",
-                  flush=True, file=sys.stderr)
-        return first
+        return next(iter(_accounts))
     raise ValueError("No Google accounts configured")
 
 
@@ -601,6 +602,23 @@ def _normalize_args_app(inner):
             await send({"type": "http.response.body", "body": body})
             return
 
+        # Auth check — protect MCP endpoints (health is open for Docker HEALTHCHECK)
+        if _SIDECAR_AUTH_TOKEN:
+            headers_dict = {k.decode(): v.decode() for k, v in scope.get("headers", [])}
+            token = headers_dict.get("x-internal-token", "")
+            if token != _SIDECAR_AUTH_TOKEN:
+                body = json.dumps({"error": "unauthorized"}).encode()
+                await send({
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [
+                        [b"content-type", b"application/json"],
+                        [b"content-length", str(len(body)).encode()],
+                    ],
+                })
+                await send({"type": "http.response.body", "body": body})
+                return
+
         # Buffer full request body
         chunks = []
         while True:
@@ -654,8 +672,20 @@ try:
 except Exception:
     pass
 
-# Bypass MCP DNS rebinding Host validation for Railway internal networking
-TransportSecurityMiddleware._validate_host = lambda self, host: True
+# Replace global Host validation bypass with allowlist for Railway networking
+_ALLOWED_HOST_SUFFIXES = (
+    ".railway.internal",
+    ".up.railway.app",
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+)
+
+def _host_allowlist(self, host: str) -> bool:
+    h = (host.split(":")[0] if ":" in host else host).lower()
+    return any(h == s or h.endswith(s) for s in _ALLOWED_HOST_SUFFIXES)
+
+TransportSecurityMiddleware._validate_host = _host_allowlist
 
 app = _normalize_args_app(mcp.streamable_http_app())
 
