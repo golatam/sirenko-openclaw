@@ -74,7 +74,11 @@
         "enabled": true,
         "config": {
           "mcpServerUrl": "${GOOGLE_MCP_URL}",
-          "telegramSidecarUrl": "${TELEGRAM_SIDECAR_URL}"
+          "telegramSidecarUrl": "${TELEGRAM_SIDECAR_URL}",
+          "tavilyApiKey": "${TAVILY_API_KEY}",
+          "amplitudeOAuthClientId": "${AMPLITUDE_OAUTH_CLIENT_ID}",
+          "amplitudeOAuthAccessToken": "${AMPLITUDE_OAUTH_ACCESS_TOKEN}",
+          "amplitudeOAuthRefreshToken": "${AMPLITUDE_OAUTH_REFRESH_TOKEN}"
         }
       },
       "memory-core": {

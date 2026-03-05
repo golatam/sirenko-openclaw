@@ -51,9 +51,9 @@ export function getPluginConfig(api: OpenClawPluginApi): WorkAgentConfig {
     telegramSidecarUrl: raw.telegramSidecarUrl || process.env.TELEGRAM_SIDECAR_URL,
     tavilyApiKey: raw.tavilyApiKey || process.env.TAVILY_API_KEY,
     sidecarAuthToken: raw.sidecarAuthToken || process.env.SIDECAR_AUTH_TOKEN,
-    amplitudeOAuthClientId: process.env.AMPLITUDE_OAUTH_CLIENT_ID,
-    amplitudeOAuthAccessToken: process.env.AMPLITUDE_OAUTH_ACCESS_TOKEN,
-    amplitudeOAuthRefreshToken: process.env.AMPLITUDE_OAUTH_REFRESH_TOKEN,
+    amplitudeOAuthClientId: raw.amplitudeOAuthClientId || process.env.AMPLITUDE_OAUTH_CLIENT_ID,
+    amplitudeOAuthAccessToken: raw.amplitudeOAuthAccessToken || process.env.AMPLITUDE_OAUTH_ACCESS_TOKEN,
+    amplitudeOAuthRefreshToken: raw.amplitudeOAuthRefreshToken || process.env.AMPLITUDE_OAUTH_REFRESH_TOKEN,
   };
 }
 

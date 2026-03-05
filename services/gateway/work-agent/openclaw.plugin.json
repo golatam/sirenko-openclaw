@@ -21,6 +21,22 @@
       "amplitudeMcpUrl": {
         "type": "string",
         "description": "Amplitude MCP server URL (default: https://mcp.amplitude.com). For legacy sidecar, set to sidecar URL."
+      },
+      "sidecarAuthToken": {
+        "type": "string",
+        "description": "Shared auth token for internal sidecar communication (X-Internal-Token header)"
+      },
+      "amplitudeOAuthClientId": {
+        "type": "string",
+        "description": "OAuth client_id for Amplitude MCP server (from gen_amplitude_token.py)"
+      },
+      "amplitudeOAuthAccessToken": {
+        "type": "string",
+        "description": "OAuth access_token for Amplitude MCP server (auto-refreshed at runtime)"
+      },
+      "amplitudeOAuthRefreshToken": {
+        "type": "string",
+        "description": "OAuth refresh_token for Amplitude MCP server"
       }
     }
   },
