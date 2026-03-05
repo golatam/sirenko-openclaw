@@ -13,6 +13,7 @@ from aiohttp import web, ClientSession, ClientTimeout, FormData
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
+from telethon.tl.types import User, Chat, Channel
 
 load_dotenv()
 
@@ -118,6 +119,21 @@ async def insert_message(
         )
 
 
+def classify_chat(entity) -> tuple[str, Optional[str]]:
+    """Return (chat_type, chat_title) for a Telethon entity."""
+    if isinstance(entity, User):
+        parts = [getattr(entity, "first_name", None), getattr(entity, "last_name", None)]
+        name = " ".join(p for p in parts if p) or None
+        return ("private", name)
+    elif isinstance(entity, Channel):
+        kind = "channel" if entity.broadcast else "supergroup"
+        return (kind, getattr(entity, "title", None))
+    elif isinstance(entity, Chat):
+        return ("group", getattr(entity, "title", None))
+    else:
+        return ("unknown", getattr(entity, "title", None) or getattr(entity, "first_name", None))
+
+
 def is_voice_message(message) -> bool:
     """Check if a Telethon message is a voice note (not music/audio file)."""
     from telethon.tl.types import MessageMediaDocument, DocumentAttributeAudio
@@ -168,9 +184,11 @@ async def sync_history(client: TelegramClient, pool: asyncpg.Pool, account: Acco
                 sender_name = getattr(sender, "first_name", None) or getattr(sender, "title", None)
                 thread_id = str(getattr(dialog.entity, "id", ""))
                 text = msg.message
+                chat_type, chat_title = classify_chat(dialog.entity)
                 metadata = {
-                    "chat_title": getattr(dialog.entity, "title", None),
+                    "chat_title": chat_title,
                     "chat_username": getattr(dialog.entity, "username", None),
+                    "chat_type": chat_type,
                     "message_id": msg.id,
                 }
 
@@ -256,9 +274,11 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
             chat = await event.get_chat()
             thread_id = str(getattr(chat, "id", "")) if chat else None
             text = event.raw_text
+            chat_type, chat_title = classify_chat(chat) if chat else ("unknown", None)
             metadata = {
-                "chat_title": getattr(chat, "title", None),
+                "chat_title": chat_title,
                 "chat_username": getattr(chat, "username", None),
+                "chat_type": chat_type,
                 "message_id": event.message.id,
             }
 
@@ -494,7 +514,7 @@ async def main() -> None:
     if not accounts:
         raise SystemExit("No Telegram accounts configured")
 
-    sync_history_on_start = os.getenv("SYNC_HISTORY_ON_START", "0") == "1"
+    sync_history_on_start = os.getenv("SYNC_HISTORY_ON_START", "1") == "1"
     per_chat = getenv_int("HISTORY_PER_CHAT", 50) or 50
 
     pool = await asyncpg.create_pool(dsn=db_url, min_size=1, max_size=5)
