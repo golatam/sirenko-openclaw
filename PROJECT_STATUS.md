@@ -19,7 +19,7 @@ See: `ARCHITECTURE.md`
 Project: `openclaw-work-agent`
 Services:
 - `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core)
-- `google-mcp-sidecar` (FastMCP, 7 тулов, мультиаккаунт)
+- `google-mcp-sidecar` (FastMCP, 9 тулов, мультиаккаунт)
 - `telegram-sidecar` (Telethon MTProto ingestion + HTTP search API)
 - `whatsapp-sidecar` (Baileys ingestion → PostgreSQL, source-agnostic search через telegram-sidecar)
 - `Postgres`
@@ -52,7 +52,7 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 14 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send, health check)
+- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 15 тулов (Gmail, Calendar, Drive, Telegram, WhatsApp search, usage, channel info, Slack send, health check, backup)
 - `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
 - `work_slack_send` — отправка сообщений в Slack (DM по email или channel ID); используется cron-задачами
 - 30s AbortController таймаут на все fetch-вызовы
@@ -128,6 +128,15 @@ Gateway domain:
 - HEARTBEAT.md: добавлена проверка здоровья системы
 - `scripts/pg-backup.sh`: pg_dump с 7-дневным retention
 
+### Automated Backups (Phase 8d)
+- Google Drive as backup storage (existing OAuth, zero new deps)
+- `drive_upload` + `drive_delete` MCP-тулы в google-mcp-sidecar
+- `backup.ts` модуль: pg_dump → gzip, tar memory files, fetch WA auth state
+- Periodic task: check every 6h, backup if >23h since last; 14-day retention with auto-cleanup
+- `work_backup` тул для ручного запуска
+- Slack alert при ошибках, silent при успехе
+- State: `/data/openclaw-state/backup-status.json`
+
 ### Security & Reliability (Phase 9)
 - **9a Bugfixes**: `work_list_calendars` вызывает правильный MCP-тул; WhatsApp health status корректно показывает `error`
 - **9b Security**: `SIDECAR_AUTH_TOKEN` — единый auth token для всех сайдкаров (`X-Internal-Token` header); host allowlist в google-mcp-sidecar; `_resolve_account()` возвращает 400 при неизвестном аккаунте
@@ -154,10 +163,11 @@ services/
     Dockerfile             — Node.js 22 + OpenClaw
     entrypoint.sh          — auth, workspace sync, cron seed, session cleanup
     cron-seed.json         — seed для cron/jobs.json (2 задачи: briefing + weekly report)
-    work-agent/            — кастомный плагин (14 тулов)
-      index.ts             — plugin registration, 13 tool definitions
+    work-agent/            — кастомный плагин (15 тулов)
+      index.ts             — plugin registration, tool definitions
       mcp-client.ts        — MCP JSON-RPC 2.0 session management
       utils.ts             — fetchWithTimeout, extractParams, param, ok/err, confirmationId
+      backup.ts            — automated backup orchestration (pg + memory + WA → Drive)
     workspace/
       IDENTITY.md          — персона агента (always-overwrite)
       USER.md              — данные пользователя (always-overwrite)

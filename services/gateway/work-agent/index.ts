@@ -2,7 +2,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { configureMcp, getMcpUrl, mcpCall } from "./mcp-client.js";
 import { fetchWithTimeout, extractParams, param, ok, err, confirmationId } from "./utils.js";
 import { getPluginConfig, extractContext, loadCostUsageSummaryFn } from "./adapter.js";
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { runBackup, type BackupConfig, type BackupResult } from "./backup.js";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { dirname } from "path";
 
 let _tgSidecarUrl: string | undefined;
@@ -256,6 +257,39 @@ async function runPeriodicHealthCheck(): Promise<void> {
   // same status → silent
 
   console.error(`[work-agent] periodic health: ${result.status} (prev: ${prev || "none"})`);
+}
+
+// ---------------------------------------------------------------------------
+// Backup constants & state
+// ---------------------------------------------------------------------------
+
+const BACKUP_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;  // 6 hours
+const BACKUP_MIN_INTERVAL_MS = 23 * 60 * 60 * 1000;    // 23 hours
+const BACKUP_STARTUP_DELAY_MS = 10 * 60 * 1000;         // 10 min after deploy
+const BACKUP_STATE_FILE = "/data/openclaw-state/backup-status.json";
+const BACKUP_ACCOUNT = "kirill@sirenko.ru";
+const BACKUP_RETENTION_DAYS = 14;
+
+function loadLastBackupTime(): number | null {
+  try {
+    const data = JSON.parse(readFileSync(BACKUP_STATE_FILE, "utf-8"));
+    return data.lastBackupMs || null;
+  } catch {
+    return null;
+  }
+}
+
+function saveBackupStatus(result: BackupResult): void {
+  try {
+    mkdirSync(dirname(BACKUP_STATE_FILE), { recursive: true });
+    writeFileSync(BACKUP_STATE_FILE, JSON.stringify({
+      lastBackupMs: Date.now(),
+      lastResult: result,
+      updatedAt: new Date().toISOString(),
+    }));
+  } catch (e) {
+    console.error(`[work-agent] failed to save backup status: ${(e as Error).message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -942,6 +976,38 @@ const WorkAgentPlugin = {
     });
 
     // -----------------------------------------------------------------------
+    // Backup
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_backup",
+      label: "System Backup",
+      description:
+        "Trigger manual backup of PostgreSQL, agent memory, and WhatsApp auth to Google Drive. " +
+        "Returns per-component results with Drive file links.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      async execute() {
+        try {
+          const backupConfig: BackupConfig = {
+            dbUrl: process.env.DATABASE_URL || "",
+            workspaceDir: "/data/openclaw-state/workspace",
+            waUrl: process.env.WHATSAPP_SIDECAR_URL,
+            sidecarAuthToken: _sidecarAuthToken,
+            account: BACKUP_ACCOUNT,
+            retentionDays: BACKUP_RETENTION_DAYS,
+          };
+          if (!backupConfig.dbUrl) return err("DATABASE_URL not configured");
+
+          const result = await runBackup(backupConfig);
+          saveBackupStatus(result);
+          return ok(result, { status: result.ok ? "complete" : "partial" });
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    // -----------------------------------------------------------------------
     // Slack interactive (Block Kit)
     // -----------------------------------------------------------------------
 
@@ -1285,6 +1351,66 @@ const WorkAgentPlugin = {
         }
       }, PERIODIC_HEALTH_INTERVAL_MS);
     }, STARTUP_HEALTH_DELAY_MS);
+
+    // -----------------------------------------------------------------------
+    // Periodic backup (check every 6h, run if last backup >23h ago)
+    // -----------------------------------------------------------------------
+
+    const checkAndRunBackup = async () => {
+      try {
+        const lastMs = loadLastBackupTime();
+        const elapsed = lastMs ? Date.now() - lastMs : Infinity;
+
+        if (elapsed < BACKUP_MIN_INTERVAL_MS) {
+          console.error(`[work-agent] backup: skipping, last backup ${Math.floor(elapsed / 3600000)}h ago`);
+          return;
+        }
+
+        const dbUrl = process.env.DATABASE_URL;
+        if (!dbUrl) {
+          console.error("[work-agent] backup: DATABASE_URL not set, skipping");
+          return;
+        }
+
+        console.error("[work-agent] backup: starting scheduled backup...");
+        const backupConfig: BackupConfig = {
+          dbUrl,
+          workspaceDir: "/data/openclaw-state/workspace",
+          waUrl: process.env.WHATSAPP_SIDECAR_URL,
+          sidecarAuthToken: _sidecarAuthToken,
+          account: BACKUP_ACCOUNT,
+          retentionDays: BACKUP_RETENTION_DAYS,
+        };
+
+        const result = await runBackup(backupConfig);
+        saveBackupStatus(result);
+
+        if (!result.ok) {
+          // Alert on failure
+          try {
+            await slackApi("chat.postMessage", {
+              channel: SLACK_ALERT_CHANNEL,
+              text: `:warning: *Backup completed with errors*\n${result.errors.join("\n")}\n_${result.timestamp}_`,
+            });
+          } catch {}
+        }
+
+        console.error(`[work-agent] backup: done, ok=${result.ok}, errors=${result.errors.length}`);
+      } catch (e) {
+        console.error(`[work-agent] backup error: ${(e as Error).message}`);
+        try {
+          await slackApi("chat.postMessage", {
+            channel: SLACK_ALERT_CHANNEL,
+            text: `:x: *Backup failed*\n${(e as Error).message}\n_${new Date().toISOString()}_`,
+          });
+        } catch {}
+      }
+    };
+
+    setTimeout(async () => {
+      await checkAndRunBackup();
+      setInterval(() => checkAndRunBackup(), BACKUP_CHECK_INTERVAL_MS);
+    }, BACKUP_STARTUP_DELAY_MS);
   },
 };
 

@@ -8,6 +8,7 @@ import makeWASocket, {
 import pino from "pino";
 import pg from "pg";
 import { createServer } from "node:http";
+import { execSync } from "node:child_process";
 import { readdirSync, rmSync, existsSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
@@ -421,6 +422,36 @@ setTimeout(()=>location.reload(),10000);
     }
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end("<html><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>No QR Yet</h1><p>Waiting for QR code generation... Refresh in a few seconds.</p><script>setTimeout(()=>location.reload(),3000)</script></body></html>");
+    return;
+  }
+  // Backup endpoint — returns auth state as base64 tar.gz
+  if (req.method === "GET" && req.url === "/backup") {
+    if (SIDECAR_AUTH_TOKEN) {
+      const token = req.headers["x-internal-token"] || "";
+      if (token !== SIDECAR_AUTH_TOKEN) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+    }
+    try {
+      if (!existsSync(AUTH_DIR) || readdirSync(AUTH_DIR).length === 0) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ content_base64: null, error: "no auth state" }));
+        return;
+      }
+      const buf = execSync(`tar czf - -C "${AUTH_DIR}" .`, { maxBuffer: 50 * 1024 * 1024 });
+      const filesCount = readdirSync(AUTH_DIR).length;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        content_base64: buf.toString("base64"),
+        files_count: filesCount,
+        size_bytes: buf.length,
+      }));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
     return;
   }
   res.writeHead(404);

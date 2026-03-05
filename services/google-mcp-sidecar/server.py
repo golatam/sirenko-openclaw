@@ -25,6 +25,7 @@ import uvicorn
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaInMemoryUpload
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecurityMiddleware
 
@@ -530,6 +531,79 @@ def drive_read_file_content(file_id: str, account: str = "") -> str:
         text = str(content)
 
     return json.dumps({"id": file_id, "name": meta.get("name"), "mimeType": mime, "content": text})
+
+
+@mcp.tool()
+def drive_upload(account: str, file_name: str, content_base64: str,
+                 mime_type: str = "application/gzip",
+                 folder_name: str = "OpenClaw Backups") -> str:
+    """Upload a file to Google Drive (base64-encoded content).
+
+    Creates target folder if it doesn't exist. Uploads file into that folder.
+
+    Args:
+        account: Gmail account email
+        file_name: Name for the uploaded file
+        content_base64: File content encoded as base64
+        mime_type: MIME type of the file (default: application/gzip)
+        folder_name: Drive folder name to upload into (default: OpenClaw Backups)
+    """
+    drive = _get_service(account, "drive", "v3")
+
+    # Find or create folder
+    folder_query = (
+        f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder'"
+        f" and trashed = false"
+    )
+    folder_resp = drive.files().list(q=folder_query, pageSize=1,
+                                     fields="files(id,name)").execute()
+    folders = folder_resp.get("files", [])
+
+    if folders:
+        folder_id = folders[0]["id"]
+    else:
+        folder_meta = {
+            "name": folder_name,
+            "mimeType": "application/vnd.google-apps.folder",
+        }
+        folder = drive.files().create(body=folder_meta, fields="id").execute()
+        folder_id = folder["id"]
+        print(f"[DRIVE] Created folder '{folder_name}' ({folder_id})",
+              flush=True, file=sys.stderr)
+
+    # Decode and upload
+    content = base64.b64decode(content_base64)
+    media = MediaInMemoryUpload(content, mimetype=mime_type, resumable=False)
+    file_meta = {"name": file_name, "parents": [folder_id]}
+
+    uploaded = drive.files().create(
+        body=file_meta, media_body=media,
+        fields="id,name,size,webViewLink",
+    ).execute()
+
+    print(f"[DRIVE] Uploaded {file_name} ({len(content)} bytes) → {uploaded.get('id')}",
+          flush=True, file=sys.stderr)
+
+    return json.dumps({
+        "file_id": uploaded["id"],
+        "file_name": uploaded.get("name"),
+        "size_bytes": len(content),
+        "web_view_link": uploaded.get("webViewLink", ""),
+    })
+
+
+@mcp.tool()
+def drive_delete(account: str, file_id: str) -> str:
+    """Delete a file from Google Drive by file ID.
+
+    Args:
+        account: Gmail account email
+        file_id: Google Drive file ID to delete
+    """
+    drive = _get_service(account, "drive", "v3")
+    drive.files().delete(fileId=file_id).execute()
+    print(f"[DRIVE] Deleted file {file_id}", flush=True, file=sys.stderr)
+    return json.dumps({"deleted": True, "file_id": file_id})
 
 
 # ---------------------------------------------------------------------------

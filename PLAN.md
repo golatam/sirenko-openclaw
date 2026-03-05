@@ -216,12 +216,16 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [ ] Варианты: интеграция с банковским API, Google Sheets как БД, специализированный сервис (Plaid, Mercury, etc.)
 - [ ] Определить scope: личные финансы, бизнес-финансы, или оба
 
-### 8d — Резервные копии (память и критичные данные)
-- [ ] Определить что бэкапить: память агента (`MEMORY.md`, `memory/*.md`), PostgreSQL (messages, accounts), auth state (WhatsApp, Telegram sessions)
-- [ ] Организовать автоматический бэкап памяти агента (сейчас только на Railway volume — single point of failure)
-- [ ] Расширить `scripts/pg-backup.sh` — автоматический запуск по cron (Railway cron job или внешний)
-- [ ] Стратегия хранения: S3/R2, Google Drive, или GitHub (приватный репо)
-- [ ] Восстановление: документировать процедуру восстановления из бэкапа
+### 8d — Automated Backups to Google Drive (Done, 2026-03-05)
+- [x] `drive_upload` и `drive_delete` MCP-тулы в google-mcp-sidecar (base64 upload, folder auto-create)
+- [x] `/backup` endpoint в whatsapp-sidecar (tar.gz auth state → base64 JSON)
+- [x] `postgresql-client` в gateway Dockerfile (pg_dump)
+- [x] `backup.ts` модуль: оркестрация PostgreSQL + memory + WA auth → Drive upload + cleanup
+- [x] `work_backup` тул для ручного запуска
+- [x] Periodic task: проверка каждые 6ч, бэкап если прошло >23ч с последнего
+- [x] Google Drive folder: "OpenClaw Backups", retention 14 дней (auto-cleanup)
+- [x] Slack alert при ошибках бэкапа, silent при успехе
+- [x] State file: `/data/openclaw-state/backup-status.json`
 
 ## Phase 9 — Security & Reliability (Done)
 

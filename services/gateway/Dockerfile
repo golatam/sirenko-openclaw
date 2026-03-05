@@ -1,7 +1,7 @@
 FROM node:22-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git ca-certificates curl \
+  && apt-get install -y --no-install-recommends git ca-certificates curl postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g openclaw@2026.2.23 clawhub @clawdbot/lobster@2026.1.24 \
