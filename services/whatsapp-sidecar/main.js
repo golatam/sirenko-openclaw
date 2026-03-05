@@ -144,6 +144,9 @@ function isVoiceMessage(msg) {
   return !!msg.message?.audioMessage;
 }
 
+const GROQ_MAX_RETRIES = 3;
+const GROQ_BACKOFF_BASE = 3; // seconds: 3, 6, 12
+
 async function transcribeAudio(msg) {
   if (!GROQ_API_KEY) return null;
   try {
@@ -153,27 +156,37 @@ async function transcribeAudio(msg) {
     for await (const chunk of stream) chunks.push(chunk);
     const buffer = Buffer.concat(chunks);
 
-    const form = new FormData();
-    form.append("file", new Blob([buffer], { type: "audio/ogg" }), "voice.ogg");
-    form.append("model", GROQ_MODEL);
-    form.append("language", "ru");
+    for (let attempt = 0; attempt <= GROQ_MAX_RETRIES; attempt++) {
+      const form = new FormData();
+      form.append("file", new Blob([buffer], { type: "audio/ogg" }), "voice.ogg");
+      form.append("model", GROQ_MODEL);
+      form.append("language", "ru");
 
-    const resp = await fetch(GROQ_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
-      body: form,
-      signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
-    });
+      const resp = await fetch(GROQ_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+        body: form,
+        signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
+      });
 
-    if (!resp.ok) {
-      const body = await resp.text();
-      console.error(`[WA] Groq API error ${resp.status}: ${body}`);
-      return null;
+      if (resp.status === 429 && attempt < GROQ_MAX_RETRIES) {
+        const delay = GROQ_BACKOFF_BASE * (2 ** attempt);
+        console.error(`[WA] Groq 429 rate limit, retry ${attempt + 1}/${GROQ_MAX_RETRIES} in ${delay}s`);
+        await new Promise((r) => setTimeout(r, delay * 1000));
+        continue;
+      }
+
+      if (!resp.ok) {
+        const body = await resp.text();
+        console.error(`[WA] Groq API error ${resp.status}: ${body}`);
+        return null;
+      }
+
+      const result = await resp.json();
+      const text = (result.text || "").trim();
+      return text || null;
     }
-
-    const result = await resp.json();
-    const text = (result.text || "").trim();
-    return text || null;
+    return null;
   } catch (e) {
     console.error(`[WA] Transcription failed: ${e.message}`);
     return null;

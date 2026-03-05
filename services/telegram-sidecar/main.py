@@ -146,31 +146,45 @@ def is_voice_message(message) -> bool:
     return False
 
 
+GROQ_MAX_RETRIES = 3
+GROQ_BACKOFF_BASE = 3  # seconds: 3, 6, 12
+
+
 async def transcribe_audio(audio_bytes: bytes) -> Optional[str]:
-    """Send audio bytes to Groq Whisper API, return transcript or None."""
+    """Send audio bytes to Groq Whisper API, return transcript or None.
+
+    Retries up to GROQ_MAX_RETRIES times on 429 (rate limit) with exponential backoff.
+    """
     if not GROQ_API_KEY:
         return None
-    try:
-        form = FormData()
-        form.add_field("file", audio_bytes, filename="voice.ogg", content_type="audio/ogg")
-        form.add_field("model", GROQ_MODEL)
-        form.add_field("language", "ru")
-        async with ClientSession(timeout=GROQ_TIMEOUT) as session:
-            async with session.post(
-                GROQ_URL,
-                data=form,
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-            ) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    print(f"[TG] Groq API error {resp.status}: {body}", flush=True, file=sys.stderr)
-                    return None
-                result = await resp.json()
-                text = result.get("text", "").strip()
-                return text if text else None
-    except Exception as e:
-        print(f"[TG] Transcription failed: {e}", flush=True, file=sys.stderr)
-        return None
+    for attempt in range(GROQ_MAX_RETRIES + 1):
+        try:
+            form = FormData()
+            form.add_field("file", audio_bytes, filename="voice.ogg", content_type="audio/ogg")
+            form.add_field("model", GROQ_MODEL)
+            form.add_field("language", "ru")
+            async with ClientSession(timeout=GROQ_TIMEOUT) as session:
+                async with session.post(
+                    GROQ_URL,
+                    data=form,
+                    headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                ) as resp:
+                    if resp.status == 429 and attempt < GROQ_MAX_RETRIES:
+                        delay = GROQ_BACKOFF_BASE * (2 ** attempt)
+                        print(f"[TG] Groq 429 rate limit, retry {attempt + 1}/{GROQ_MAX_RETRIES} in {delay}s", flush=True, file=sys.stderr)
+                        await asyncio.sleep(delay)
+                        continue
+                    if resp.status != 200:
+                        body = await resp.text()
+                        print(f"[TG] Groq API error {resp.status}: {body}", flush=True, file=sys.stderr)
+                        return None
+                    result = await resp.json()
+                    text = result.get("text", "").strip()
+                    return text if text else None
+        except Exception as e:
+            print(f"[TG] Transcription failed: {e}", flush=True, file=sys.stderr)
+            return None
+    return None
 
 
 async def sync_history(client: TelegramClient, pool: asyncpg.Pool, account: AccountConfig, per_chat: int) -> None:

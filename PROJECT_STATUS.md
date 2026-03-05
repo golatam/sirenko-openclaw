@@ -1,6 +1,6 @@
 # Project Status — OpenClaw Work Agent
 
-Date: 2026-03-03
+Date: 2026-03-05
 
 ## Goal
 Build a focused agent using OpenClaw for:
@@ -18,7 +18,7 @@ See: `ARCHITECTURE.md`
 ## Current Services (Railway)
 Project: `openclaw-work-agent`
 Services:
-- `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-lancedb)
+- `gateway` (OpenClaw Gateway v2026.2.23 + work-agent plugin + memory-core)
 - `google-mcp-sidecar` (FastMCP, 7 тулов, мультиаккаунт)
 - `telegram-sidecar` (Telethon MTProto ingestion + HTTP search API)
 - `whatsapp-sidecar` (Baileys ingestion → PostgreSQL, source-agnostic search через telegram-sidecar)
@@ -127,6 +127,12 @@ Gateway domain:
 - Cron health check: каждые 30 мин, алерт в Slack при degraded/error
 - HEARTBEAT.md: добавлена проверка здоровья системы
 - `scripts/pg-backup.sh`: pg_dump с 7-дневным retention
+
+### Security & Reliability (Phase 9)
+- **9a Bugfixes**: `work_list_calendars` вызывает правильный MCP-тул; WhatsApp health status корректно показывает `error`
+- **9b Security**: `SIDECAR_AUTH_TOKEN` — единый auth token для всех сайдкаров (`X-Internal-Token` header); host allowlist в google-mcp-sidecar; `_resolve_account()` возвращает 400 при неизвестном аккаунте
+- **9c Reliability**: message dedup (`UNIQUE` partial index + `ON CONFLICT DO NOTHING`); supervisor loop с exponential backoff в telegram-sidecar; graceful shutdown (SIGTERM handlers) во всех сайдкарах; `STOPSIGNAL SIGTERM` во всех Dockerfiles
+- **Voice retry**: транскрипция голосовых с retry (3 попытки, backoff 3s→6s→12s) при Groq 429 rate limit (оба сайдкара)
 
 ## Pending
 - [x] Проверить end-to-end: отправка письма, создание события (2026-02-25)

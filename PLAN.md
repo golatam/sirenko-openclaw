@@ -223,21 +223,21 @@ OpenClaw v2026.2.23 имеет встроенный media pipeline для ауд
 - [ ] Стратегия хранения: S3/R2, Google Drive, или GitHub (приватный репо)
 - [ ] Восстановление: документировать процедуру восстановления из бэкапа
 
-## Phase 9 — Security & Reliability
+## Phase 9 — Security & Reliability (Done)
 
 Источник: аудит Codex (gpt-5.3-codex) от 2026-03-03.
 
 ### 9a — Баги (Low effort)
-- [ ] Починить `work_list_calendars` — вызывает `calendar_get_events` вместо списка календарей (`index.ts:367-387`)
-- [ ] Починить WhatsApp health status — `status:error` показывает `overall=degraded` вместо `error` (`main.js:354`)
+- [x] Починить `work_list_calendars` — вызывает `calendar_get_events` вместо списка календарей (`index.ts:367-387`) (2026-03-05)
+- [x] Починить WhatsApp health status — `status:error` показывает `overall=degraded` вместо `error` (`main.js:354`) (2026-03-05)
 
 ### 9b — Security Hardening
-- [ ] Host validation: заменить глобальный bypass `_validate_host` на allowlist (`*.railway.internal`, Railway public URLs) (`server.py:618`)
-- [ ] `/qr` endpoint: добавить auth token или отключить в production (`main.js:368`)
-- [ ] Sidecar API auth: `X-Internal-Token` header middleware на `/search` и `/health` (telegram-sidecar + whatsapp-sidecar + google-mcp-sidecar)
-- [ ] Account fallback: возвращать `400 account_not_found` вместо fallback на первый аккаунт (`server.py:81`)
+- [x] Host validation: allowlist (`*.railway.internal`, Railway public URLs) в `TransportSecurityMiddleware` (2026-03-05)
+- [x] Sidecar API auth: `SIDECAR_AUTH_TOKEN` + `X-Internal-Token` header middleware на все сайдкары; `/health` открыт (2026-03-05)
+- [x] Account fallback: `_resolve_account()` возвращает 400 при неизвестном аккаунте (2026-03-05)
 
 ### 9c — Reliability
-- [ ] Message dedup: `UNIQUE(source, external_id)` constraint + `ON CONFLICT DO NOTHING` (`schema.sql`, `main.py`, `main.js`)
-- [ ] Telethon task supervision: supervisor loop с автоперезапуском + exponential backoff (`main.py:466`)
-- [ ] Graceful shutdown: SIGTERM handlers для DB pool и pending tasks (все сайдкары)
+- [x] Message dedup: `UNIQUE(source, account_label, thread_id, message_id)` partial index + `ON CONFLICT DO NOTHING` (2026-03-05)
+- [x] Telethon task supervision: `supervise_account()` loop с exponential backoff (5s→300s) (2026-03-05)
+- [x] Graceful shutdown: SIGTERM/SIGINT handlers, `STOPSIGNAL SIGTERM` во всех Dockerfiles (2026-03-05)
+- [x] Voice transcription retry: 3 попытки с backoff (3s→6s→12s) при Groq 429 rate limit (оба сайдкара) (2026-03-05)
