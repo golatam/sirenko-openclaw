@@ -374,24 +374,32 @@ SELECT id, source, account_label, thread_id, sender_id, sender_name,
 FROM messages
 WHERE ($1::text IS NULL OR source = $1)
   AND ($2::text = '' OR plainto_tsquery('simple', $2)::text = ''
-       OR to_tsvector('simple', coalesce(text, '')) @@ plainto_tsquery('simple', $2))
+       OR to_tsvector('simple',
+            coalesce(text, '') || ' ' || coalesce(sender_name, '') || ' ' || coalesce(metadata_json->>'chat_title', '')
+          ) @@ plainto_tsquery('simple', $2))
   AND ($3::text IS NULL OR account_label = $3)
   AND ($4::text IS NULL OR thread_id = $4)
   AND ($5::timestamptz IS NULL OR ts >= $5)
   AND ($6::timestamptz IS NULL OR ts <= $6)
+  AND ($7::text IS NULL OR metadata_json->>'chat_type' = $7)
+  AND ($8::text IS NULL OR sender_name ILIKE '%' || $8 || '%')
 ORDER BY ts DESC
-LIMIT $7 OFFSET $8
+LIMIT $9 OFFSET $10
 """
 
 COUNT_SQL = """
 SELECT COUNT(*) FROM messages
 WHERE ($1::text IS NULL OR source = $1)
   AND ($2::text = '' OR plainto_tsquery('simple', $2)::text = ''
-       OR to_tsvector('simple', coalesce(text, '')) @@ plainto_tsquery('simple', $2))
+       OR to_tsvector('simple',
+            coalesce(text, '') || ' ' || coalesce(sender_name, '') || ' ' || coalesce(metadata_json->>'chat_title', '')
+          ) @@ plainto_tsquery('simple', $2))
   AND ($3::text IS NULL OR account_label = $3)
   AND ($4::text IS NULL OR thread_id = $4)
   AND ($5::timestamptz IS NULL OR ts >= $5)
   AND ($6::timestamptz IS NULL OR ts <= $6)
+  AND ($7::text IS NULL OR metadata_json->>'chat_type' = $7)
+  AND ($8::text IS NULL OR sender_name ILIKE '%' || $8 || '%')
 """
 
 
@@ -415,18 +423,20 @@ async def handle_search(request: web.Request) -> web.Response:
     thread_id = body.get("thread_id") or None
     from_ts = body.get("from") or None
     to_ts = body.get("to") or None
+    chat_type = body.get("chat_type") or None
+    sender = body.get("sender") or None
     limit = _clamp(body.get("limit"), 1, 100, 20)
     offset = _clamp(body.get("offset"), 0, 10000, 0)
 
-    print(f"[SEARCH] source={source} query={query!r} account={account} thread={thread_id} from={from_ts} to={to_ts} limit={limit}", flush=True, file=sys.stderr)
+    print(f"[SEARCH] source={source} query={query!r} account={account} thread={thread_id} chat_type={chat_type} sender={sender} from={from_ts} to={to_ts} limit={limit}", flush=True, file=sys.stderr)
 
     try:
         async with pool.acquire() as conn:
             rows = await conn.fetch(
-                SEARCH_SQL, source, query, account, thread_id, from_ts, to_ts, limit, offset
+                SEARCH_SQL, source, query, account, thread_id, from_ts, to_ts, chat_type, sender, limit, offset
             )
             total_row = await conn.fetchval(
-                COUNT_SQL, source, query, account, thread_id, from_ts, to_ts
+                COUNT_SQL, source, query, account, thread_id, from_ts, to_ts, chat_type, sender
             )
     except Exception as e:
         print(f"[SEARCH] DB error: {e}", flush=True, file=sys.stderr)
@@ -560,7 +570,12 @@ async def main() -> None:
 
             CREATE INDEX IF NOT EXISTS messages_source_ts_idx ON messages (source, ts DESC);
             CREATE INDEX IF NOT EXISTS messages_account_ts_idx ON messages (account_label, ts DESC);
-            CREATE INDEX IF NOT EXISTS messages_text_idx ON messages USING GIN (to_tsvector('simple', coalesce(text, '')));
+
+            DROP INDEX IF EXISTS messages_text_idx;
+            CREATE INDEX IF NOT EXISTS messages_text_idx ON messages
+              USING GIN (to_tsvector('simple',
+                coalesce(text, '') || ' ' || coalesce(sender_name, '') || ' ' || coalesce(metadata_json->>'chat_title', '')
+              ));
 
             CREATE UNIQUE INDEX IF NOT EXISTS messages_dedup_idx
               ON messages (source, account_label, thread_id, (metadata_json->>'message_id'))

@@ -49,7 +49,7 @@ async function tavilySearch(
 
 async function queryMessages(
   query: string,
-  opts: { source?: string; from?: string; to?: string; limit?: number } = {},
+  opts: { source?: string; from?: string; to?: string; limit?: number; chatType?: string; sender?: string } = {},
 ): Promise<{ rows: unknown[]; total: number; source: string }> {
   if (!_tgSidecarUrl) return { rows: [], total: 0, source: "messaging (sidecar not configured)" };
 
@@ -58,6 +58,8 @@ async function queryMessages(
   if (opts.from) body.from = opts.from;
   if (opts.to) body.to = opts.to;
   if (opts.limit) body.limit = opts.limit;
+  if (opts.chatType) body.chat_type = opts.chatType;
+  if (opts.sender) body.sender = opts.sender;
 
   console.error(`[work-agent] queryMessages: ${_tgSidecarUrl}/search source=${opts.source || "all"}`);
   const hdrs: Record<string, string> = { "Content-Type": "application/json" };
@@ -409,12 +411,14 @@ const WorkAgentPlugin = {
       label: "Unified Search",
       description:
         "Search across Gmail, Telegram, WhatsApp, Google Drive, and Calendar. " +
-        "All sources are queried in parallel. Use `channel` to filter.",
+        "All sources are queried in parallel. Use `channel` to filter. " +
+        "For messaging (Telegram/WhatsApp): FTS searches message text, sender names, and chat titles. " +
+        "Use `chat_type` to filter by conversation type (e.g. 'private' for DMs) and `sender` to filter by sender name.",
       parameters: {
         type: "object",
         additionalProperties: false,
         properties: {
-          query: { type: "string", description: "Search query" },
+          query: { type: "string", description: "Search query (searches text, sender names, and chat titles in messaging)" },
           account: {
             type: "string",
             description: "Gmail account email (optional, searches all if omitted)",
@@ -427,6 +431,14 @@ const WorkAgentPlugin = {
           from: { type: "string", description: "Start date (ISO 8601)" },
           to: { type: "string", description: "End date (ISO 8601)" },
           limit: { type: "number", description: "Max results per source (default 20)" },
+          chat_type: {
+            type: "string",
+            description: "Filter messaging by chat type: private (DMs), group, supergroup, channel",
+          },
+          sender: {
+            type: "string",
+            description: "Filter messaging by sender name (partial match, case-insensitive)",
+          },
         },
         required: ["query"],
       },
@@ -438,6 +450,8 @@ const WorkAgentPlugin = {
         const from = param(params, "from") as string | undefined;
         const to = param(params, "to") as string | undefined;
         const limit = (param(params, "limit") as number) || 20;
+        const chatType = param(params, "chat_type") as string | undefined;
+        const sender = param(params, "sender") as string | undefined;
 
         const tasks: { key: string; promise: Promise<unknown> }[] = [];
 
@@ -462,7 +476,7 @@ const WorkAgentPlugin = {
         if (channel === "all" || channel === "telegram") {
           tasks.push({
             key: "telegram",
-            promise: queryMessages(query, { source: "telegram", from, to, limit }),
+            promise: queryMessages(query, { source: "telegram", from, to, limit, chatType, sender }),
           });
         }
 
@@ -470,7 +484,7 @@ const WorkAgentPlugin = {
         if (channel === "all" || channel === "whatsapp") {
           tasks.push({
             key: "whatsapp",
-            promise: queryMessages(query, { source: "whatsapp", from, to, limit }),
+            promise: queryMessages(query, { source: "whatsapp", from, to, limit, chatType, sender }),
           });
         }
 
