@@ -661,10 +661,13 @@ def _normalize_args_app(inner):
                     checks["accounts"] = {"status": "ok", "count": len(account_details), "accounts": account_details}
 
             uptime = int(time.monotonic() - _start_time)
+            # Count registered MCP tools for diagnostics
+            tool_count = len(mcp._tool_manager._tools) if hasattr(mcp, '_tool_manager') else -1
             body = json.dumps({
                 "status": overall,
                 "checks": checks,
                 "uptime_seconds": uptime,
+                "tools_registered": tool_count,
             }).encode("utf-8")
             await send({
                 "type": "http.response.start",
