@@ -70,7 +70,8 @@ export interface BackupResult {
 
 /** Dump PostgreSQL via pg_dump and gzip. Returns compressed buffer. */
 export function backupPostgres(dbUrl: string): Buffer {
-  return execSync(`pg_dump "${dbUrl}" | gzip`, {
+  // set -o pipefail ensures pg_dump errors propagate through the pipe
+  return execSync(`bash -c 'set -o pipefail; pg_dump "${dbUrl}" | gzip'`, {
     maxBuffer: 100 * 1024 * 1024, // 100MB
     timeout: 120_000, // 2 min
   });
