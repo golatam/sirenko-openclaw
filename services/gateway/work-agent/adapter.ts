@@ -112,10 +112,19 @@ export async function loadCostUsageSummaryFn(): Promise<CostUsageFn | null> {
     }
 
     const mod = await import(join(distDir, chunk));
-    if (typeof mod.loadCostUsageSummary === "function") {
-      return mod.loadCostUsageSummary as CostUsageFn;
+    // Rolldown minifies named exports to single letters, but preserves
+    // a namespace re-export object with original names.
+    const fn =
+      mod.loadCostUsageSummary ??                           // direct (future-proof)
+      Object.values(mod).find(                              // namespace object
+        (v: unknown) =>
+          v && typeof v === "object" && typeof (v as Record<string, unknown>).loadCostUsageSummary === "function",
+      )?.loadCostUsageSummary ??
+      (typeof mod.n === "function" ? mod.n : null);         // current minified alias
+    if (typeof fn === "function") {
+      return fn as CostUsageFn;
     }
-    console.error("[adapter] loadCostUsageSummary not found in module");
+    console.error("[adapter] loadCostUsageSummary not found in module, keys:", Object.keys(mod));
     return null;
   } catch (e) {
     console.error("[adapter] Failed to load cost/usage module:", (e as Error).message);
