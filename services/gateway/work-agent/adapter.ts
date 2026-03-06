@@ -93,12 +93,25 @@ type CostUsageFn = (opts: { days: number }) => Promise<{
 
 export async function loadCostUsageSummaryFn(): Promise<CostUsageFn | null> {
   try {
-    const openclawMain = require.resolve("openclaw");
-    const modulePath = openclawMain.replace(
-      /dist[/\\]index\.(js|ts)$/,
-      "dist/plugin-sdk/infra/session-cost-usage.js",
+    // OpenClaw is installed globally — require.resolve("openclaw") fails.
+    // The function is bundled into a chunk with a hash suffix.
+    const { execSync } = await import("node:child_process");
+    const { readdirSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const globalRoot = execSync("npm root -g", { encoding: "utf-8" }).trim();
+    const distDir = join(globalRoot, "openclaw", "dist");
+
+    // Find the chunk: session-cost-usage-<hash>.js
+    const chunk = readdirSync(distDir).find(
+      (f) => f.startsWith("session-cost-usage-") && f.endsWith(".js"),
     );
-    const mod = await import(modulePath);
+    if (!chunk) {
+      console.error("[adapter] session-cost-usage chunk not found in", distDir);
+      return null;
+    }
+
+    const mod = await import(join(distDir, chunk));
     if (typeof mod.loadCostUsageSummary === "function") {
       return mod.loadCostUsageSummary as CostUsageFn;
     }

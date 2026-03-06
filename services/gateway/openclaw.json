@@ -4,8 +4,8 @@
       "workspace": "/data/openclaw-state/workspace",
       "memorySearch": {
         "enabled": true,
-        "provider": "gemini",
-        "model": "gemini-embedding-001"
+        "provider": "mistral",
+        "model": "mistral-embed"
       }
     }
   },
