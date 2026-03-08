@@ -382,7 +382,7 @@ WHERE ($1::text IS NULL OR source = $1)
   AND ($5::timestamptz IS NULL OR ts >= $5)
   AND ($6::timestamptz IS NULL OR ts <= $6)
   AND ($7::text IS NULL OR metadata_json->>'chat_type' = $7)
-  AND ($8::text IS NULL OR sender_name ILIKE '%' || $8 || '%')
+  AND ($8::text IS NULL OR sender_name ILIKE '%' || $8 || '%' OR sender_id ILIKE '%' || $8 || '%')
 ORDER BY ts DESC
 LIMIT $9 OFFSET $10
 """
@@ -399,7 +399,7 @@ WHERE ($1::text IS NULL OR source = $1)
   AND ($5::timestamptz IS NULL OR ts >= $5)
   AND ($6::timestamptz IS NULL OR ts <= $6)
   AND ($7::text IS NULL OR metadata_json->>'chat_type' = $7)
-  AND ($8::text IS NULL OR sender_name ILIKE '%' || $8 || '%')
+  AND ($8::text IS NULL OR sender_name ILIKE '%' || $8 || '%' OR sender_id ILIKE '%' || $8 || '%')
 """
 
 
