@@ -1407,7 +1407,9 @@ const WorkAgentPlugin = {
       description:
         "Run a Google Analytics 4 report. Use work_analytics_properties first to get property IDs. " +
         "Common metrics: activeUsers, sessions, screenPageViews, conversions, totalRevenue. " +
-        "Common dimensions: date, country, city, pagePath, sessionSource, deviceCategory.",
+        "Google Ads metrics (requires GA4↔Ads link): advertiserAdClicks, advertiserAdCost, advertiserAdCostPerClick, advertiserAdImpressions. " +
+        "Common dimensions: date, country, city, pagePath, sessionSource, deviceCategory. " +
+        "Google Ads dimensions: sessionGoogleAdsCampaignName, sessionGoogleAdsAdGroupName, sessionGoogleAdsKeyword, sessionGoogleAdsAdNetworkType.",
       parameters: {
         type: "object",
         additionalProperties: false,

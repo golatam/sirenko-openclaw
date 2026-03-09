@@ -834,7 +834,9 @@ def analytics_run_report(property_id: str, metrics: list[str],
     """Run a Google Analytics 4 report.
 
     Common metrics: activeUsers, sessions, screenPageViews, conversions, totalRevenue.
+    Google Ads metrics (requires GA4-Ads link): advertiserAdClicks, advertiserAdCost, advertiserAdCostPerClick, advertiserAdImpressions.
     Common dimensions: date, country, city, pagePath, sessionSource, deviceCategory.
+    Google Ads dimensions: sessionGoogleAdsCampaignName, sessionGoogleAdsAdGroupName, sessionGoogleAdsKeyword, sessionGoogleAdsAdNetworkType.
 
     Args:
         property_id: GA4 property ID (numeric, e.g. "123456789")
