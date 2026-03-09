@@ -1,0 +1,12 @@
+.venv
+.venv39
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.git
+.env
+*.env
+config.example.env
+gen_session.py
+README.md

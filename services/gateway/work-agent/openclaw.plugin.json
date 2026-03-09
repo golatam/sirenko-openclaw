@@ -49,6 +49,18 @@
       "tallyApiKey": {
         "type": "string",
         "description": "Tally.so API key for form submissions (falls back to TALLY_API_KEY env var)"
+      },
+      "slackAlertChannel": {
+        "type": "string",
+        "description": "Slack channel or user ID for health/backup alerts (default: U0AH7S5AG91)"
+      },
+      "backupAccount": {
+        "type": "string",
+        "description": "Google account email for Drive backups (default: kirill@sirenko.ru)"
+      },
+      "backupRetentionDays": {
+        "type": "number",
+        "description": "Number of days to retain backups on Google Drive (default: 14)"
       }
     }
   },

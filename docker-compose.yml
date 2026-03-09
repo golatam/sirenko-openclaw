@@ -42,6 +42,7 @@ services:
       GOOGLE_WORKSPACE_CLIENT_ID: ${GOOGLE_WORKSPACE_CLIENT_ID}
       GOOGLE_WORKSPACE_CLIENT_SECRET: ${GOOGLE_WORKSPACE_CLIENT_SECRET}
       GOOGLE_WORKSPACE_ACCOUNTS: ${GOOGLE_WORKSPACE_ACCOUNTS}
+      SIDECAR_AUTH_TOKEN: ${SIDECAR_AUTH_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,6 +57,7 @@ services:
       PORT: "8000"
       DATABASE_URL: postgres://openclaw:openclaw@postgres:5432/openclaw
       GROQ_API_KEY: ${GROQ_API_KEY}
+      SIDECAR_AUTH_TOKEN: ${SIDECAR_AUTH_TOKEN}
       SYNC_HISTORY_ON_START: "0"
       HISTORY_PER_CHAT: "50"
       LOG_LEVEL: info
@@ -88,6 +90,7 @@ services:
       PORT: "8000"
       DATABASE_URL: postgres://openclaw:openclaw@postgres:5432/openclaw
       GROQ_API_KEY: ${GROQ_API_KEY}
+      SIDECAR_AUTH_TOKEN: ${SIDECAR_AUTH_TOKEN}
       WA_AUTH_DIR: /data/auth_state
       WA_ACCOUNT_LABEL: wa1
       WA_SYNC_HISTORY: "0"

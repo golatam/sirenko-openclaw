@@ -30,6 +30,9 @@ export interface WorkAgentConfig {
   databaseUrl?: string;
   whatsappSidecarUrl?: string;
   tallyApiKey?: string;
+  slackAlertChannel?: string;
+  backupAccount?: string;
+  backupRetentionDays?: number;
 }
 
 export interface ToolContext {
@@ -67,6 +70,9 @@ export function getPluginConfig(api: OpenClawPluginApi): WorkAgentConfig {
     databaseUrl: raw.databaseUrl || process.env.DATABASE_URL,
     whatsappSidecarUrl: raw.whatsappSidecarUrl || process.env.WHATSAPP_SIDECAR_URL,
     tallyApiKey: raw.tallyApiKey || process.env.TALLY_API_KEY,
+    slackAlertChannel: raw.slackAlertChannel || process.env.SLACK_ALERT_CHANNEL || "U0AH7S5AG91",
+    backupAccount: raw.backupAccount || process.env.BACKUP_ACCOUNT || "kirill@sirenko.ru",
+    backupRetentionDays: Number(raw.backupRetentionDays || process.env.BACKUP_RETENTION_DAYS) || 14,
   };
 }
 

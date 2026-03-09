@@ -13,6 +13,19 @@ let _databaseUrl: string | undefined;
 let _whatsappSidecarUrl: string | undefined;
 let _googleMcp: McpClient | undefined;
 let _amplitudeMcp: McpClient | undefined;
+let _slackAlertChannel: string = "U0AH7S5AG91";
+let _backupAccount: string = "kirill@sirenko.ru";
+let _backupRetentionDays: number = 14;
+
+// MCP guard — returns a graceful error instead of throwing on undefined
+function requireGoogleMcp(): McpClient {
+  if (!_googleMcp) throw new Error("Google MCP sidecar is not configured (mcpServerUrl missing)");
+  return _googleMcp;
+}
+function requireAmplitudeMcp(): McpClient {
+  if (!_amplitudeMcp) throw new Error("Amplitude MCP is not configured (OAuth credentials missing)");
+  return _amplitudeMcp;
+}
 let _tallyApiKey: string | undefined;
 
 // ---------------------------------------------------------------------------
@@ -196,7 +209,7 @@ async function probeAllSidecars(): Promise<HealthResult> {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10_000);
         try {
-          const result = await _amplitudeMcp!.listTools();
+          const result = await requireAmplitudeMcp().listTools();
           components.amplitude_mcp = { status: "ok", tools_count: result.tools?.length ?? 0 };
         } finally {
           clearTimeout(timer);
@@ -260,7 +273,7 @@ function formatHealthMessage(result: HealthResult, kind: AlertKind): string {
   return lines.join("\n");
 }
 
-const SLACK_ALERT_CHANNEL = "U0AH7S5AG91";
+// _slackAlertChannel — now from config (_slackAlertChannel), see register()
 const STARTUP_HEALTH_DELAY_MS = 3 * 60 * 1000; // 3 minutes
 const PERIODIC_HEALTH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -286,7 +299,7 @@ function saveHealthStatus(status: string): void {
 async function sendHealthNotification(result: HealthResult, kind: AlertKind): Promise<void> {
   try {
     const text = formatHealthMessage(result, kind);
-    await slackApi("chat.postMessage", { channel: SLACK_ALERT_CHANNEL, text });
+    await slackApi("chat.postMessage", { channel: _slackAlertChannel, text });
   } catch (e) {
     console.error(`[work-agent] health notification failed: ${(e as Error).message}`);
   }
@@ -320,8 +333,7 @@ const BACKUP_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;  // 6 hours
 const BACKUP_MIN_INTERVAL_MS = 23 * 60 * 60 * 1000;    // 23 hours
 const BACKUP_STARTUP_DELAY_MS = 10 * 60 * 1000;         // 10 min after deploy
 const BACKUP_STATE_FILE = "/data/openclaw-state/backup-status.json";
-const BACKUP_ACCOUNT = "kirill@sirenko.ru";
-const BACKUP_RETENTION_DAYS = 14;
+// _backupAccount, _backupRetentionDays — now from config, see register()
 
 function loadLastBackupTime(): number | null {
   try {
@@ -428,6 +440,9 @@ const WorkAgentPlugin = {
     _databaseUrl = config.databaseUrl;
     _whatsappSidecarUrl = config.whatsappSidecarUrl;
     _tallyApiKey = config.tallyApiKey;
+    _slackAlertChannel = config.slackAlertChannel || "U0AH7S5AG91";
+    _backupAccount = config.backupAccount || "kirill@sirenko.ru";
+    _backupRetentionDays = config.backupRetentionDays || 14;
     console.error(`[work-agent] googleMcp=${config.mcpServerUrl} amplitudeMcp=${_amplitudeMcp ? "configured" : "not set"} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} tally=${_tallyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"} dbUrl=${_databaseUrl ? "configured" : "not set"} waUrl=${_whatsappSidecarUrl ? "configured" : "not set"}`);
 
     // Alias for readability in tool handlers
@@ -501,7 +516,7 @@ const WorkAgentPlugin = {
             max_results: limit,
           };
           if (account) gmailArgs.account = account;
-          tasks.push({ key: "gmail", promise: googleMcp!.call("query_gmail_emails", gmailArgs) });
+          tasks.push({ key: "gmail", promise: requireGoogleMcp().call("query_gmail_emails", gmailArgs) });
         }
 
         // Telegram search
@@ -528,7 +543,7 @@ const WorkAgentPlugin = {
             max_results: Math.min(limit, 10),
           };
           if (account) driveArgs.account = account;
-          tasks.push({ key: "drive", promise: googleMcp!.call("drive_search_files", driveArgs) });
+          tasks.push({ key: "drive", promise: requireGoogleMcp().call("drive_search_files", driveArgs) });
         }
 
         // Calendar search
@@ -541,7 +556,7 @@ const WorkAgentPlugin = {
           if (from) calArgs.time_min = from.includes("T") ? from : `${from}T00:00:00Z`;
           if (to) calArgs.time_max = to.includes("T") ? to : `${to}T23:59:59Z`;
           if (account) calArgs.account = account;
-          tasks.push({ key: "calendar", promise: googleMcp!.call("calendar_get_events", calArgs) });
+          tasks.push({ key: "calendar", promise: requireGoogleMcp().call("calendar_get_events", calArgs) });
         }
 
         // Run all sources in parallel
@@ -586,7 +601,7 @@ const WorkAgentPlugin = {
           };
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const result = await googleMcp!.call("gmail_get_message_details", args);
+          const result = await requireGoogleMcp().call("gmail_get_message_details", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -674,7 +689,7 @@ const WorkAgentPlugin = {
           if (cc) args.cc = cc;
           if (bcc) args.bcc = bcc;
 
-          const result = await googleMcp!.call("gmail_send_email", args);
+          const result = await requireGoogleMcp().call("gmail_send_email", args);
           return ok(result, { action: "email_sent" });
         } catch (e) {
           return err((e as Error).message);
@@ -707,7 +722,7 @@ const WorkAgentPlugin = {
           const args: Record<string, unknown> = {};
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const result = await googleMcp!.call("calendar_list_calendars", args);
+          const result = await requireGoogleMcp().call("calendar_list_calendars", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -760,7 +775,7 @@ const WorkAgentPlugin = {
           const timeMax = param(params, "time_max") as string | undefined;
           if (timeMax) args.time_max = timeMax;
 
-          const result = await googleMcp!.call("calendar_get_events", args);
+          const result = await requireGoogleMcp().call("calendar_get_events", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -868,7 +883,7 @@ const WorkAgentPlugin = {
           if (location) args.location = location;
           if (attendees?.length) args.attendees = attendees;
 
-          const result = await googleMcp!.call("create_calendar_event", args);
+          const result = await requireGoogleMcp().call("create_calendar_event", args);
           return ok(result, { action: "event_created" });
         } catch (e) {
           return err((e as Error).message);
@@ -911,7 +926,7 @@ const WorkAgentPlugin = {
           };
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const result = await googleMcp!.call("drive_search_files", args);
+          const result = await requireGoogleMcp().call("drive_search_files", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -943,7 +958,7 @@ const WorkAgentPlugin = {
           const args: Record<string, unknown> = { file_id: fileId };
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
-          const result = await googleMcp!.call("drive_read_file_content", args);
+          const result = await requireGoogleMcp().call("drive_read_file_content", args);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);
@@ -1659,8 +1674,8 @@ const WorkAgentPlugin = {
             workspaceDir: "/data/openclaw-state/workspace",
             waUrl: _whatsappSidecarUrl,
             sidecarAuthToken: _sidecarAuthToken,
-            account: BACKUP_ACCOUNT,
-            retentionDays: BACKUP_RETENTION_DAYS,
+            account: _backupAccount,
+            retentionDays: _backupRetentionDays,
           };
           if (!backupConfig.dbUrl) return err("DATABASE_URL not configured");
           if (!googleMcp) return err("Google MCP sidecar not configured (needed for Drive upload)");
@@ -1882,9 +1897,9 @@ const WorkAgentPlugin = {
         if (account) driveArgs.account = account;
 
         const [gmailResult, telegramResult, driveResult] = await Promise.allSettled([
-          googleMcp!.call("query_gmail_emails", gmailArgs),
+          requireGoogleMcp().call("query_gmail_emails", gmailArgs),
           queryMessages(project, { from, to, limit: 50 }),
-          googleMcp!.call("drive_search_files", driveArgs),
+          requireGoogleMcp().call("drive_search_files", driveArgs),
         ]);
 
         const data: { gmail?: unknown; telegram?: unknown; drive?: unknown } = {
@@ -1965,9 +1980,9 @@ const WorkAgentPlugin = {
           if (account) driveArgs.account = account;
 
           const [gmailResult, telegramResult, driveResult] = await Promise.allSettled([
-            googleMcp!.call("query_gmail_emails", gmailArgs),
+            requireGoogleMcp().call("query_gmail_emails", gmailArgs),
             queryMessages(project, { from: weekStart, to: weekEnd, limit: 50 }),
-            googleMcp!.call("drive_search_files", driveArgs),
+            requireGoogleMcp().call("drive_search_files", driveArgs),
           ]);
 
           report.projects[project] = {
@@ -1986,7 +2001,7 @@ const WorkAgentPlugin = {
             max_results: 50,
           };
           if (account) calArgs.account = account;
-          report.calendar = await googleMcp!.call("calendar_get_events", calArgs);
+          report.calendar = await requireGoogleMcp().call("calendar_get_events", calArgs);
         } catch (e) {
           report.calendar = { error: (e as Error).message };
         }
@@ -2048,8 +2063,8 @@ const WorkAgentPlugin = {
           workspaceDir: "/data/openclaw-state/workspace",
           waUrl: _whatsappSidecarUrl,
           sidecarAuthToken: _sidecarAuthToken,
-          account: BACKUP_ACCOUNT,
-          retentionDays: BACKUP_RETENTION_DAYS,
+          account: _backupAccount,
+          retentionDays: _backupRetentionDays,
         };
 
         const result = await runBackup(backupConfig, googleMcp);
@@ -2059,7 +2074,7 @@ const WorkAgentPlugin = {
           // Alert on failure
           try {
             await slackApi("chat.postMessage", {
-              channel: SLACK_ALERT_CHANNEL,
+              channel: _slackAlertChannel,
               text: `:warning: *Backup completed with errors*\n${result.errors.join("\n")}\n_${result.timestamp}_`,
             });
           } catch {}
@@ -2075,7 +2090,7 @@ const WorkAgentPlugin = {
             }
             const cleaned = result.cleanup?.deleted ? `, cleaned ${result.cleanup.deleted} old` : "";
             await slackApi("chat.postMessage", {
-              channel: SLACK_ALERT_CHANNEL,
+              channel: _slackAlertChannel,
               text: `:white_check_mark: *Backup OK* — ${parts.join(", ")}${cleaned}\n_${result.timestamp}_`,
             });
           } catch {}
@@ -2086,7 +2101,7 @@ const WorkAgentPlugin = {
         console.error(`[work-agent] backup error: ${(e as Error).message}`);
         try {
           await slackApi("chat.postMessage", {
-            channel: SLACK_ALERT_CHANNEL,
+            channel: _slackAlertChannel,
             text: `:x: *Backup failed*\n${(e as Error).message}\n_${new Date().toISOString()}_`,
           });
         } catch {}
