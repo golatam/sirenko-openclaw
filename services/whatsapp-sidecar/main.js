@@ -12,12 +12,27 @@ import { execSync } from "node:child_process";
 import { readdirSync, rmSync, existsSync, writeFileSync, readFileSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
+// Structured JSON logger
+// ---------------------------------------------------------------------------
+
+function jlog(level, msg, data) {
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    service: "whatsapp-sidecar",
+    msg,
+  };
+  if (data) entry.data = data;
+  process.stderr.write(JSON.stringify(entry) + "\n");
+}
+
+// ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  console.error("[WA] DATABASE_URL is required");
+  jlog("error", "DATABASE_URL is required");
   process.exit(1);
 }
 
@@ -40,7 +55,7 @@ const GROQ_MODEL = "whisper-large-v3";
 const GROQ_TIMEOUT_MS = 30_000;
 
 if (!GROQ_API_KEY) {
-  console.error("[WA] WARNING: GROQ_API_KEY not set — voice will not be transcribed");
+  jlog("warn", "GROQ_API_KEY not set — voice will not be transcribed");
 }
 
 // ---------------------------------------------------------------------------
@@ -50,6 +65,7 @@ if (!GROQ_API_KEY) {
 const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 5 });
 
 async function ensureSchema() {
+  // Schema must match services/telegram-sidecar/schema.sql (canonical source of truth)
   const client = await pool.connect();
   try {
     await client.query(`
@@ -60,7 +76,8 @@ async function ensureSchema() {
         identity TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'active',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (source, label)
       );
       CREATE TABLE IF NOT EXISTS messages (
         id BIGSERIAL PRIMARY KEY,
@@ -76,7 +93,16 @@ async function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS messages_source_ts_idx ON messages (source, ts DESC);
       CREATE INDEX IF NOT EXISTS messages_account_ts_idx ON messages (account_label, ts DESC);
-      CREATE INDEX IF NOT EXISTS messages_text_idx ON messages USING GIN (to_tsvector('simple', coalesce(text, '')));
+
+      DROP INDEX IF EXISTS messages_text_idx;
+      CREATE INDEX IF NOT EXISTS messages_text_idx ON messages
+        USING GIN (to_tsvector('simple',
+          coalesce(text, '') || ' ' || coalesce(sender_name, '') || ' ' || coalesce(metadata_json->>'chat_title', '')
+        ));
+
+      CREATE UNIQUE INDEX IF NOT EXISTS messages_dedup_idx
+        ON messages (source, account_label, thread_id, (metadata_json->>'message_id'))
+        WHERE metadata_json->>'message_id' IS NOT NULL;
     `);
   } finally {
     client.release();
@@ -174,14 +200,14 @@ async function transcribeAudio(msg) {
 
       if (resp.status === 429 && attempt < GROQ_MAX_RETRIES) {
         const delay = GROQ_BACKOFF_BASE * (2 ** attempt);
-        console.error(`[WA] Groq 429 rate limit, retry ${attempt + 1}/${GROQ_MAX_RETRIES} in ${delay}s`);
+        jlog("warn", "Groq 429 rate limit", { attempt: attempt + 1, max_retries: GROQ_MAX_RETRIES, delay_s: delay });
         await new Promise((r) => setTimeout(r, delay * 1000));
         continue;
       }
 
       if (!resp.ok) {
         const body = await resp.text();
-        console.error(`[WA] Groq API error ${resp.status}: ${body}`);
+        jlog("error", "Groq API error", { status: resp.status, body });
         return null;
       }
 
@@ -191,7 +217,7 @@ async function transcribeAudio(msg) {
     }
     return null;
   } catch (e) {
-    console.error(`[WA] Transcription failed: ${e.message}`);
+    jlog("error", "Transcription failed", { error: e.message });
     return null;
   }
 }
@@ -202,12 +228,7 @@ async function transcribeAudio(msg) {
 
 function renderQrToLog(qrString) {
   // Just log the raw string — user can paste into any QR generator
-  // For actual terminal QR, we'd need qrcode-terminal package
-  console.error("[WA] ──────────────────────────────────────");
-  console.error("[WA] Scan QR: paste this into https://qr.io or any QR decoder:");
-  console.error(`[WA] ${qrString}`);
-  console.error("[WA] Or GET /qr on the health endpoint");
-  console.error("[WA] ──────────────────────────────────────");
+  jlog("info", "QR code generated — scan or GET /qr", { qr_raw: qrString });
 }
 
 // ---------------------------------------------------------------------------
@@ -246,9 +267,6 @@ async function startWhatsApp() {
 
     if (qr) {
       lastQr = qr;
-      console.error("[WA] QR code generated — GET /qr to see it, or scan this string:");
-      console.error(`[WA] QR raw: ${qr}`);
-      // Generate text-based QR in logs
       renderQrToLog(qr);
     }
 
@@ -256,9 +274,9 @@ async function startWhatsApp() {
       isConnected = true;
       reconnectAttempts = 0;
       const me = sock.user?.id || "unknown";
-      console.error(`[WA] Connected as ${me}`);
+      jlog("info", "Connected", { identity: me });
       ensureAccountRow(me).catch((e) =>
-        console.error("[WA] Failed to register account:", e.message),
+        jlog("error", "Failed to register account", { error: e.message }),
       );
       // Mark force-reauth as completed so it won't repeat on next restart
       if (FORCE_REAUTH) {
@@ -271,15 +289,15 @@ async function startWhatsApp() {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-      console.error(`[WA] Disconnected (status=${statusCode}). Reconnect: ${shouldReconnect}`);
+      jlog("info", "Disconnected", { status_code: statusCode, will_reconnect: shouldReconnect });
 
       if (shouldReconnect && !shuttingDown) {
         reconnectAttempts++;
         const delay = Math.min(60_000, 1000 * Math.pow(2, reconnectAttempts));
-        console.error(`[WA] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+        jlog("info", "Reconnecting", { delay_ms: delay, attempt: reconnectAttempts });
         setTimeout(startWhatsApp, delay);
       } else {
-        console.error("[WA] Logged out. Delete auth state and re-scan QR.");
+        jlog("warn", "Logged out — delete auth state and re-scan QR");
       }
     }
   });
@@ -329,7 +347,7 @@ async function startWhatsApp() {
           if (transcript) {
             text = transcript;
             metadata.transcribed = true;
-            console.error(`[WA] Transcribed voice → ${transcript.length} chars`);
+            jlog("info", "Transcribed voice", { chars: transcript.length });
           } else {
             metadata.transcription_failed = true;
           }
@@ -347,7 +365,7 @@ async function startWhatsApp() {
         });
         messageCount++;
       } catch (e) {
-        console.error("[WA] Failed to ingest message:", e.message);
+        jlog("error", "Failed to ingest message", { error: e.message });
       }
     }
   });
@@ -480,23 +498,25 @@ async function main() {
     let markerValue = "";
     try { markerValue = existsSync(reauthMarker) ? readFileSync(reauthMarker, "utf-8").trim() : ""; } catch {}
     if (markerValue !== FORCE_REAUTH) {
-      console.error(`[WA] WA_FORCE_REAUTH="${FORCE_REAUTH}" — clearing auth state for re-pairing...`);
+      jlog("info", "Clearing auth state for re-pairing", { force_reauth: FORCE_REAUTH });
       for (const f of readdirSync(AUTH_DIR)) {
         rmSync(`${AUTH_DIR}/${f}`, { recursive: true, force: true });
       }
-      console.error("[WA] Auth state cleared. Will generate new QR code.");
+      jlog("info", "Auth state cleared — will generate new QR");
     } else {
-      console.error(`[WA] WA_FORCE_REAUTH="${FORCE_REAUTH}" already completed — skipping.`);
+      jlog("info", "Force reauth already completed — skipping", { force_reauth: FORCE_REAUTH });
     }
   }
 
-  console.error(`[WA] Account label: ${ACCOUNT_LABEL}`);
-  console.error(`[WA] Auth dir: ${AUTH_DIR}`);
-  console.error(`[WA] Skip own messages: ${SKIP_FROM_ME}`);
-  console.error(`[WA] Sync history: ${SYNC_HISTORY}`);
+  jlog("info", "Starting", {
+    account: ACCOUNT_LABEL,
+    auth_dir: AUTH_DIR,
+    skip_own: SKIP_FROM_ME,
+    sync_history: SYNC_HISTORY,
+  });
 
   server.listen(HTTP_PORT, "0.0.0.0", () => {
-    console.error(`[HTTP] Health endpoint on port ${HTTP_PORT}`);
+    jlog("info", "Health endpoint listening", { port: HTTP_PORT });
   });
 
   await startWhatsApp();
@@ -509,24 +529,24 @@ async function main() {
 function gracefulShutdown(sig) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.error(`[WA] ${sig} received — shutting down`);
+  jlog("info", "Shutdown signal received", { signal: sig });
 
   // Force exit safety net
   setTimeout(() => {
-    console.error("[WA] Force exit after timeout");
+    jlog("warn", "Force exit after timeout");
     process.exit(1);
   }, 8000).unref();
 
-  server.close(() => console.error("[WA] HTTP server closed"));
+  server.close(() => jlog("info", "HTTP server closed"));
   if (currentSock) {
     try { currentSock.end(undefined); } catch {}
-    console.error("[WA] WhatsApp socket closed");
+    jlog("info", "WhatsApp socket closed");
   }
   pool.end()
-    .then(() => console.error("[WA] DB pool closed"))
-    .catch((e) => console.error("[WA] DB pool close error:", e.message))
+    .then(() => jlog("info", "DB pool closed"))
+    .catch((e) => jlog("error", "DB pool close error", { error: e.message }))
     .finally(() => {
-      console.error("[WA] Shutdown complete");
+      jlog("info", "Shutdown complete");
       process.exit(0);
     });
 }
@@ -535,6 +555,6 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 main().catch((e) => {
-  console.error("[WA] Fatal:", e);
+  jlog("error", "Fatal error", { error: e.message, stack: e.stack });
   process.exit(1);
 });

@@ -33,19 +33,66 @@ const WorkAgentPlugin = {
   name: "Work Agent",
   description: "Unified search across Gmail/Calendar/Drive/Telegram/WhatsApp — plus send, schedule, report, interactive UI.",
   kind: "tools",
+  // configSchema must stay in sync with openclaw.plugin.json (canonical manifest)
   configSchema: {
     type: "object",
     additionalProperties: false,
     properties: {
       mcpServerUrl: {
         type: "string",
-        description:
-          "URL of google-mcp-sidecar (e.g. http://google-mcp-sidecar.railway.internal:8000)",
+        description: "URL of google-mcp-sidecar (e.g. http://google-mcp-sidecar.railway.internal:8000)",
       },
       telegramSidecarUrl: {
         type: "string",
-        description:
-          "URL of telegram-sidecar HTTP API (e.g. http://telegram-sidecar.railway.internal:8000)",
+        description: "URL of telegram-sidecar HTTP API (e.g. http://telegram-sidecar.railway.internal:8000)",
+      },
+      tavilyApiKey: {
+        type: "string",
+        description: "Tavily API key for web search (falls back to TAVILY_API_KEY env var)",
+      },
+      amplitudeMcpUrl: {
+        type: "string",
+        description: "Amplitude MCP server URL (default: https://mcp.amplitude.com). For legacy sidecar, set to sidecar URL.",
+      },
+      sidecarAuthToken: {
+        type: "string",
+        description: "Shared auth token for internal sidecar communication (X-Internal-Token header)",
+      },
+      amplitudeOAuthClientId: {
+        type: "string",
+        description: "OAuth client_id for Amplitude MCP server (from gen_amplitude_token.py)",
+      },
+      amplitudeOAuthAccessToken: {
+        type: "string",
+        description: "OAuth access_token for Amplitude MCP server (auto-refreshed at runtime)",
+      },
+      amplitudeOAuthRefreshToken: {
+        type: "string",
+        description: "OAuth refresh_token for Amplitude MCP server",
+      },
+      databaseUrl: {
+        type: "string",
+        description: "PostgreSQL connection string for direct DB access (pg_dump, etc.)",
+      },
+      whatsappSidecarUrl: {
+        type: "string",
+        description: "URL of whatsapp-sidecar HTTP API (e.g. http://whatsapp-sidecar.railway.internal:8080)",
+      },
+      tallyApiKey: {
+        type: "string",
+        description: "Tally.so API key for form submissions (falls back to TALLY_API_KEY env var)",
+      },
+      slackAlertChannel: {
+        type: "string",
+        description: "Slack channel or user ID for health/backup alerts (default: U0AH7S5AG91)",
+      },
+      backupAccount: {
+        type: "string",
+        description: "Google account email for Drive backups (default: kirill@sirenko.ru)",
+      },
+      backupRetentionDays: {
+        type: "number",
+        description: "Number of days to retain backups on Google Drive (default: 14)",
       },
     },
   },

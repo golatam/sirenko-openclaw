@@ -4,6 +4,7 @@ import os
 import signal
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
@@ -22,13 +23,30 @@ _client_status: dict[str, str] = {}  # label -> "connected" | "disconnected" | "
 _shutdown_event = asyncio.Event()
 _active_clients: dict[str, TelegramClient] = {}  # label -> client (for disconnect on shutdown)
 
+# ---------------------------------------------------------------------------
+# Structured JSON logger
+# ---------------------------------------------------------------------------
+
+def _jlog(level: str, msg: str, **data):
+    """Emit a single JSON log line to stderr."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "level": level,
+        "service": "telegram-sidecar",
+        "msg": msg,
+    }
+    if data:
+        entry["data"] = {k: v for k, v in data.items() if v is not None}
+    print(json.dumps(entry, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
+
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 GROQ_MODEL = "whisper-large-v3"
 GROQ_TIMEOUT = ClientTimeout(total=30)
 
 if not GROQ_API_KEY:
-    print("[TG] WARNING: GROQ_API_KEY not set — voice will not be transcribed", flush=True, file=sys.stderr)
+    _jlog("warn", "GROQ_API_KEY not set — voice will not be transcribed")
 
 @dataclass
 class AccountConfig:
@@ -171,18 +189,18 @@ async def transcribe_audio(audio_bytes: bytes) -> Optional[str]:
                 ) as resp:
                     if resp.status == 429 and attempt < GROQ_MAX_RETRIES:
                         delay = GROQ_BACKOFF_BASE * (2 ** attempt)
-                        print(f"[TG] Groq 429 rate limit, retry {attempt + 1}/{GROQ_MAX_RETRIES} in {delay}s", flush=True, file=sys.stderr)
+                        _jlog("warn", "Groq 429 rate limit", attempt=attempt + 1, max_retries=GROQ_MAX_RETRIES, delay_s=delay)
                         await asyncio.sleep(delay)
                         continue
                     if resp.status != 200:
                         body = await resp.text()
-                        print(f"[TG] Groq API error {resp.status}: {body}", flush=True, file=sys.stderr)
+                        _jlog("error", "Groq API error", status=resp.status, body=body)
                         return None
                     result = await resp.json()
                     text = result.get("text", "").strip()
                     return text if text else None
         except Exception as e:
-            print(f"[TG] Transcription failed: {e}", flush=True, file=sys.stderr)
+            _jlog("error", "Transcription failed", error=str(e))
             return None
     return None
 
@@ -245,34 +263,30 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
     client = TelegramClient(session, account.api_id, account.api_hash)
 
     def _code_callback():
-        msg = (
-            f"[TG] {account.label} ({account.phone}) requires re-authorization! "
-            "Run gen_session.py locally to generate a new StringSession, "
-            f"then update the corresponding TGx_SESSION in Railway env vars."
-        )
-        print(msg, flush=True, file=sys.stderr)
+        _jlog("error", "Session expired — re-auth needed", account=account.label, phone=account.phone,
+              hint="Run gen_session.py locally, then update TGx_SESSION in Railway")
         raise RuntimeError(f"{account.label} session expired — re-auth needed (see logs)")
 
     try:
-        print(f"[TG] {account.label} connecting...", flush=True, file=sys.stderr)
+        _jlog("info", "Connecting", account=account.label)
         await asyncio.wait_for(
             client.start(phone=account.phone, code_callback=_code_callback),
             timeout=60,
         )
     except asyncio.TimeoutError:
-        print(f"[TG] FAILED to start {account.label} ({account.phone}): connection timeout (60s)", flush=True, file=sys.stderr)
+        _jlog("error", "Connection timeout", account=account.label, phone=account.phone, timeout_s=60)
         _client_status[account.label] = "failed"
         return
     except Exception as e:
-        print(f"[TG] FAILED to start {account.label} ({account.phone}): {e}", flush=True, file=sys.stderr)
+        _jlog("error", "Failed to start", account=account.label, phone=account.phone, error=str(e))
         _client_status[account.label] = "failed"
         return
     _client_status[account.label] = "connected"
-    print(f"[TG] {account.label} connected", flush=True, file=sys.stderr)
+    _jlog("info", "Connected", account=account.label)
     await ensure_account_row(pool, account)
 
     if account.session is None and os.getenv("PRINT_SESSION_STRING", "0") == "1":
-        print(f"{account.label} SESSION_STRING: {client.session.save()}")
+        _jlog("info", "Session string", account=account.label, session=client.session.save())
 
     if sync_history_on_start:
         await sync_history(client, pool, account, per_chat)
@@ -305,13 +319,14 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
                         if transcript:
                             text = transcript
                             metadata["transcribed"] = True
-                            print(f"[TG] Transcribed voice ({len(audio_bytes)} bytes) → {len(transcript)} chars", flush=True, file=sys.stderr)
+                            _jlog("info", "Transcribed voice", account=account.label,
+                                  audio_bytes=len(audio_bytes), transcript_chars=len(transcript))
                         else:
                             metadata["transcription_failed"] = True
                     else:
                         metadata["transcription_failed"] = True
                 except Exception as e:
-                    print(f"[TG] Voice download failed: {e}", flush=True, file=sys.stderr)
+                    _jlog("error", "Voice download failed", account=account.label, error=str(e))
                     metadata["transcription_failed"] = True
 
             await insert_message(
@@ -325,7 +340,7 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
                 metadata,
             )
         except Exception as e:
-            print(f"[TG] {account.label} handler error: {e}", flush=True, file=sys.stderr)
+            _jlog("error", "Handler error", account=account.label, error=str(e))
 
     try:
         await client.run_until_disconnected()
@@ -344,7 +359,7 @@ async def supervise_account(pool: asyncpg.Pool, account: AccountConfig, sync_his
         try:
             await run_account(pool, account, sync_history_on_start, per_chat)
         except Exception as e:
-            print(f"[TG] {account.label} crashed: {e}", flush=True, file=sys.stderr)
+            _jlog("error", "Account crashed", account=account.label, error=str(e))
 
         if _shutdown_event.is_set():
             break
@@ -354,7 +369,7 @@ async def supervise_account(pool: asyncpg.Pool, account: AccountConfig, sync_his
         if elapsed > 60:
             delay = 5
 
-        print(f"[TG] {account.label} will restart in {delay}s", flush=True, file=sys.stderr)
+        _jlog("info", "Restarting", account=account.label, delay_s=delay)
         try:
             await asyncio.wait_for(_shutdown_event.wait(), timeout=delay)
             break  # shutdown signalled during wait
@@ -411,10 +426,12 @@ def _clamp(val: Optional[int], lo: int, hi: int, default: int) -> int:
 
 async def handle_search(request: web.Request) -> web.Response:
     pool: asyncpg.Pool = request.app["pool"]
+    req_id = request.headers.get("X-Request-Id", uuid.uuid4().hex[:8])
+
     try:
         body = await request.json()
     except Exception as e:
-        print(f"[SEARCH] invalid JSON: {e}", flush=True, file=sys.stderr)
+        _jlog("warn", "Invalid JSON body", component="search", req_id=req_id, error=str(e))
         return web.json_response({"error": "invalid JSON body"}, status=400)
 
     source = body.get("source") or None  # None = all sources
@@ -428,7 +445,9 @@ async def handle_search(request: web.Request) -> web.Response:
     limit = _clamp(body.get("limit"), 1, 100, 20)
     offset = _clamp(body.get("offset"), 0, 10000, 0)
 
-    print(f"[SEARCH] source={source} query={query!r} account={account} thread={thread_id} chat_type={chat_type} sender={sender} from={from_ts} to={to_ts} limit={limit}", flush=True, file=sys.stderr)
+    _jlog("info", "Search request", component="search", req_id=req_id,
+          source=source, query=query, account=account, thread=thread_id,
+          chat_type=chat_type, sender=sender, from_ts=from_ts, to_ts=to_ts, limit=limit)
 
     try:
         async with pool.acquire() as conn:
@@ -439,7 +458,7 @@ async def handle_search(request: web.Request) -> web.Response:
                 COUNT_SQL, source, query, account, thread_id, from_ts, to_ts, chat_type, sender
             )
     except Exception as e:
-        print(f"[SEARCH] DB error: {e}", flush=True, file=sys.stderr)
+        _jlog("error", "Search DB error", component="search", req_id=req_id, error=str(e))
         return web.json_response({"error": f"db error: {e}"}, status=500)
 
     messages = []
@@ -456,7 +475,8 @@ async def handle_search(request: web.Request) -> web.Response:
             "metadata": r["metadata_json"] if isinstance(r["metadata_json"], dict) else json.loads(r["metadata_json"] or "{}"),
         })
 
-    print(f"[SEARCH] found {len(messages)}/{total_row or 0} results", flush=True, file=sys.stderr)
+    _jlog("info", "Search results", component="search", req_id=req_id,
+          found=len(messages), total=total_row or 0)
 
     return web.json_response({
         "messages": messages,
@@ -590,10 +610,10 @@ async def main() -> None:
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", http_port)
     await site.start()
-    print(f"[HTTP] Search API listening on port {http_port}", flush=True, file=sys.stderr)
+    _jlog("info", "Search API listening", component="http", port=http_port)
 
     # Start supervised Telethon clients
-    print(f"[TG] Starting {len(accounts)} account(s)...", flush=True, file=sys.stderr)
+    _jlog("info", "Starting accounts", count=len(accounts))
     tasks = []
     for account in accounts:
         tasks.append(asyncio.create_task(
@@ -605,7 +625,7 @@ async def main() -> None:
     loop = asyncio.get_running_loop()
     def _signal_handler():
         if not _shutdown_event.is_set():
-            print("[TG] Shutdown signal received", flush=True, file=sys.stderr)
+            _jlog("info", "Shutdown signal received")
             _shutdown_event.set()
 
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -615,13 +635,13 @@ async def main() -> None:
     await _shutdown_event.wait()
 
     # Graceful shutdown sequence
-    print("[TG] Disconnecting clients...", flush=True, file=sys.stderr)
+    _jlog("info", "Disconnecting clients")
     for label, client in list(_active_clients.items()):
         try:
             await asyncio.wait_for(client.disconnect(), timeout=5)
-            print(f"[TG] {label} disconnected", flush=True, file=sys.stderr)
+            _jlog("info", "Disconnected", account=label)
         except Exception as e:
-            print(f"[TG] {label} disconnect error: {e}", flush=True, file=sys.stderr)
+            _jlog("error", "Disconnect error", account=label, error=str(e))
 
     # Cancel and await supervisor tasks
     for t in tasks:
@@ -630,12 +650,12 @@ async def main() -> None:
 
     # Cleanup HTTP server
     await runner.cleanup()
-    print("[TG] HTTP server stopped", flush=True, file=sys.stderr)
+    _jlog("info", "HTTP server stopped")
 
     # Close DB pool
     await pool.close()
-    print("[TG] DB pool closed", flush=True, file=sys.stderr)
-    print("[TG] Shutdown complete", flush=True, file=sys.stderr)
+    _jlog("info", "DB pool closed")
+    _jlog("info", "Shutdown complete")
 
 
 if __name__ == "__main__":

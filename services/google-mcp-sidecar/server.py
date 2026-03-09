@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from typing import Any
 
@@ -28,6 +29,23 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecurityMiddleware
+
+# ---------------------------------------------------------------------------
+# Structured JSON logger
+# ---------------------------------------------------------------------------
+
+def _jlog(level: str, msg: str, **data):
+    """Emit a single JSON log line to stderr."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "level": level,
+        "service": "google-mcp-sidecar",
+        "msg": msg,
+    }
+    if data:
+        entry["data"] = {k: v for k, v in data.items() if v is not None}
+    print(json.dumps(entry, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
+
 
 # ---------------------------------------------------------------------------
 # Credentials management
@@ -54,21 +72,18 @@ def _load_accounts():
         try:
             data = json.loads(raw)
             _accounts.update(data)
-            print(f"[ACCOUNTS] Loaded {len(data)} account(s): {', '.join(data.keys())}",
-                  flush=True, file=sys.stderr)
+            _jlog("info", "Accounts loaded", count=len(data), accounts=list(data.keys()))
         except json.JSONDecodeError as e:
-            print(f"[ACCOUNTS] Failed to parse GOOGLE_WORKSPACE_ACCOUNTS: {e}",
-                  flush=True, file=sys.stderr)
+            _jlog("error", "Failed to parse GOOGLE_WORKSPACE_ACCOUNTS", error=str(e))
 
     # Legacy single-account fallback
     legacy_token = os.environ.get("GOOGLE_WORKSPACE_REFRESH_TOKEN")
     if legacy_token and not _accounts:
         _accounts["default"] = legacy_token
-        print("[ACCOUNTS] Using legacy GOOGLE_WORKSPACE_REFRESH_TOKEN as 'default'",
-              flush=True, file=sys.stderr)
+        _jlog("info", "Using legacy GOOGLE_WORKSPACE_REFRESH_TOKEN as 'default'")
 
     if not _accounts:
-        print("[ACCOUNTS] WARNING: No accounts configured!", flush=True, file=sys.stderr)
+        _jlog("warn", "No accounts configured")
 
 
 _load_accounts()
@@ -115,7 +130,7 @@ def _get_credentials(account: str | None) -> Credentials:
     )
     creds.refresh(Request())
     _creds_cache[key] = creds
-    print(f"[AUTH] Credentials OK for {key}", flush=True, file=sys.stderr)
+    _jlog("info", "Credentials OK", account=key)
     return creds
 
 
@@ -197,7 +212,7 @@ def query_gmail_emails(query: str, max_results: int = 20, account: str = "") -> 
         try:
             all_results.extend(_query_gmail_single(acct, query, max_results))
         except Exception as e:
-            print(f"[GMAIL] Error querying {acct}: {e}", flush=True, file=sys.stderr)
+            _jlog("error", "Gmail query error", account=acct, error=str(e))
 
     # Sort by date descending (newest first)
     all_results.sort(key=lambda m: m.get("date", ""), reverse=True)
@@ -359,7 +374,7 @@ def calendar_list_calendars(account: str = "") -> str:
         try:
             all_results.extend(_list_single(acct))
         except Exception as e:
-            print(f"[CALENDAR_LIST] Error for {acct}: {e}", flush=True, file=sys.stderr)
+            _jlog("error", "Calendar list error", account=acct, error=str(e))
 
     return json.dumps({"calendars": all_results, "total": len(all_results)})
 
@@ -389,7 +404,7 @@ def calendar_get_events(calendar_id: str = "primary", time_min: str = "",
         try:
             all_results.extend(_calendar_events_single(acct, calendar_id, time_min, time_max, max_results, q))
         except Exception as e:
-            print(f"[CALENDAR] Error for {acct}: {e}", flush=True, file=sys.stderr)
+            _jlog("error", "Calendar events error", account=acct, error=str(e))
 
     all_results.sort(key=lambda ev: ev.get("start", ""))
     return json.dumps({"events": all_results, "total": len(all_results)})
@@ -477,7 +492,7 @@ def drive_search_files(query: str, max_results: int = 10, account: str = "") -> 
                     "account": acct,
                 })
         except Exception as e:
-            print(f"[DRIVE] Error for {acct}: {e}", flush=True, file=sys.stderr)
+            _jlog("error", "Drive search error", account=acct, error=str(e))
 
     return json.dumps({"files": all_results, "total": len(all_results)})
 
@@ -568,8 +583,7 @@ def drive_upload(account: str, file_name: str, content_base64: str,
         }
         folder = drive.files().create(body=folder_meta, fields="id").execute()
         folder_id = folder["id"]
-        print(f"[DRIVE] Created folder '{folder_name}' ({folder_id})",
-              flush=True, file=sys.stderr)
+        _jlog("info", "Created Drive folder", folder=folder_name, folder_id=folder_id)
 
     # Decode and upload
     content = base64.b64decode(content_base64)
@@ -581,8 +595,7 @@ def drive_upload(account: str, file_name: str, content_base64: str,
         fields="id,name,size,webViewLink",
     ).execute()
 
-    print(f"[DRIVE] Uploaded {file_name} ({len(content)} bytes) → {uploaded.get('id')}",
-          flush=True, file=sys.stderr)
+    _jlog("info", "Uploaded file", file_name=file_name, size_bytes=len(content), file_id=uploaded.get("id"))
 
     return json.dumps({
         "file_id": uploaded["id"],
@@ -602,7 +615,7 @@ def drive_delete(account: str, file_id: str) -> str:
     """
     drive = _get_service(account, "drive", "v3")
     drive.files().delete(fileId=file_id).execute()
-    print(f"[DRIVE] Deleted file {file_id}", flush=True, file=sys.stderr)
+    _jlog("info", "Deleted file", file_id=file_id)
     return json.dumps({"deleted": True, "file_id": file_id})
 
 
@@ -820,8 +833,7 @@ def analytics_list_properties(account: str = "") -> str:
                         "google_account": acct,
                     })
         except Exception as e:
-            print(f"[ANALYTICS] Error listing properties for {acct}: {e}",
-                  flush=True, file=sys.stderr)
+            _jlog("error", "Analytics list error", account=acct, error=str(e))
 
     return json.dumps({"properties": all_properties, "total": len(all_properties)})
 
@@ -996,8 +1008,8 @@ def _normalize_args_app(inner):
                     if normalized != args:
                         data["params"]["arguments"] = normalized
                         body = json.dumps(data).encode("utf-8")
-                        print(f"[NORMALIZE] {list(args)} → {list(normalized)}",
-                              flush=True, file=sys.stderr)
+                        _jlog("info", "Normalized args", component="normalize",
+                              original=list(args.keys()), normalized=list(normalized.keys()))
         except (json.JSONDecodeError, KeyError, TypeError):
             pass
 
@@ -1049,12 +1061,11 @@ def _cleanup():
     n_svc = len(_service_cache)
     _creds_cache.clear()
     _service_cache.clear()
-    print(f"[SERVER] Cleanup: cleared {n_creds} creds, {n_svc} services", flush=True, file=sys.stderr)
+    _jlog("info", "Cleanup", creds_cleared=n_creds, services_cleared=n_svc)
 
 atexit.register(_cleanup)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
-    print(f"[SERVER] Starting on port {port} with {len(_accounts)} account(s)",
-          flush=True, file=sys.stderr)
+    _jlog("info", "Starting server", port=port, accounts=len(_accounts))
     uvicorn.run(app, host="0.0.0.0", port=port)

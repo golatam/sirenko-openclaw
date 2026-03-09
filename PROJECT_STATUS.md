@@ -171,6 +171,27 @@ Gateway domain:
 - Скрипт: `scripts/gen_amplitude_token.py` (Python stdlib, без pip зависимостей)
 - Env vars: `AMPLITUDE_OAUTH_CLIENT_ID`, `AMPLITUDE_OAUTH_ACCESS_TOKEN`, `AMPLITUDE_OAUTH_REFRESH_TOKEN`
 
+### Phase 12 — Architecture Improvements (Codex Audit v2)
+
+**12a — Quick Wins (Done, 2026-03-09):**
+- `.dockerignore` + selective COPY во всех сервисах
+- MCP guard (`requireGoogleMcp()` / `requireAmplitudeMcp()`) — graceful degradation
+- Hardcoded бизнес-константы → config (`slackAlertChannel`, `backupAccount`, `backupRetentionDays`)
+- `SIDECAR_AUTH_TOKEN` в docker-compose.yml
+- Slack: `dmPolicy: "pairing"`, `allowFrom` whitelist
+
+**12b — Modular Split (Done, 2026-03-09):**
+- `index.ts` (2119→155 строк) разбит на доменные модули + `PluginContext` DI
+
+**12c — Sprint 2 (Done, 2026-03-09):**
+- **Schema sync**: WA-сайдкар синхронизирован с каноническим `schema.sql` (полный GIN-индекс, dedup-индекс, UNIQUE на accounts)
+- **configSchema sync**: `index.ts` configSchema синхронизирована с `openclaw.plugin.json` (14 свойств)
+- **Cron merge union by ID**: runtime-created jobs переживают деплой (`entrypoint.sh`)
+- **Non-root Docker**: `USER appuser` в 3 сайдкарах (gateway пропущен — OpenClaw third-party runtime)
+- **CI pipeline**: `.github/workflows/ci.yml` — Docker build всех 4 сервисов + Trivy security scan
+- **Structured JSON logging**: все 4 сервиса выводят JSON lines на stderr (`_jlog`/`jlog`), request ID в HTTP endpoints, machine-parseable для Railway Logs
+- **Log helper в плагине**: `jlog()` + `reqId()` в `utils.ts` для gateway work-agent
+
 ## Pending
 - [x] Проверить end-to-end: отправка письма, создание события (2026-02-25)
 - [x] Удалить `GOOGLE_WORKSPACE_REFRESH_TOKEN` из Railway (2026-02-25)

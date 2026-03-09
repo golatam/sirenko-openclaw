@@ -1,4 +1,24 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+
+// ---------------------------------------------------------------------------
+// Structured JSON logger
+// ---------------------------------------------------------------------------
+
+export function jlog(level: "info" | "warn" | "error", msg: string, data?: Record<string, unknown>): void {
+  const entry: Record<string, unknown> = {
+    ts: new Date().toISOString(),
+    level,
+    service: "work-agent",
+    msg,
+  };
+  if (data) entry.data = data;
+  console.error(JSON.stringify(entry));
+}
+
+/** Generate a short request ID for tracing. */
+export function reqId(): string {
+  return randomUUID().slice(0, 8);
+}
 
 // ---------------------------------------------------------------------------
 // Constants

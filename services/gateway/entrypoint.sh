@@ -37,10 +37,11 @@ if [ -f "$CRON_STORE" ]; then
     const seed = JSON.parse(fs.readFileSync("/app/cron-seed.json", "utf-8"));
     const store = JSON.parse(fs.readFileSync(process.argv[1], "utf-8"));
     const storeMap = new Map((store.jobs || []).map(j => [j.id, j]));
+    const seedIds = new Set((seed.jobs || []).map(j => j.id));
+    // Update seed jobs with preserved runtime state
     const merged = (seed.jobs || []).map(seedJob => {
       const existing = storeMap.get(seedJob.id);
       if (!existing) return seedJob;
-      // Keep runtime state and timestamps, overwrite everything else from seed
       return {
         ...seedJob,
         state: existing.state || {},
@@ -48,10 +49,14 @@ if [ -f "$CRON_STORE" ]; then
         updatedAtMs: existing.updatedAtMs
       };
     });
+    // Preserve runtime-created jobs not in seed (union by id)
+    for (const [id, job] of storeMap) {
+      if (!seedIds.has(id)) merged.push(job);
+    }
     const out = { version: 1, jobs: merged };
     fs.writeFileSync(process.argv[1], JSON.stringify(out, null, 2));
   ' "$CRON_STORE"
-  echo "[entrypoint] Merged cron/jobs.json (preserved runtime state)"
+  echo "[entrypoint] Merged cron/jobs.json (preserved runtime state + runtime jobs)"
 else
   cp /app/cron-seed.json "$CRON_STORE"
   echo "[entrypoint] Seeded cron/jobs.json (first run)"
