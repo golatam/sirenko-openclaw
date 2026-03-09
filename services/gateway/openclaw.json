@@ -51,7 +51,7 @@
       "allowFrom": ["slack:U0AH7S5AG91"],
       "groupPolicy": "open",
       "channels": {
-        "*": { "requireMention": true }
+        "*": { "requireMention": false }
       },
       "nativeStreaming": true,
       "replyToMode": "all"
