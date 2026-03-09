@@ -55,7 +55,7 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 28 тулов (Gmail, Calendar, Drive, Sheets, Docs, GA4, Telegram, WhatsApp search, usage, channel info, Slack send, health check, backup, Amplitude, Tally)
+- `services/gateway/work-agent/`: 31 тул, модульная архитектура (Gmail, Calendar, Drive, Sheets, Docs, GA4, Telegram, WhatsApp search, usage, channel info, Slack, health check, backup, Amplitude, Tally, web search, aggregation). `index.ts` — оркестратор (155 строк), логика в доменных модулях (`gmail.ts`, `calendar.ts`, `drive.ts`, `sheets.ts`, `docs.ts`, `analytics.ts`, `slack.ts`, `ops.ts`) + shared (`types.ts`, `clients.ts`, `health.ts`). PluginContext — DI контейнер
 - `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
 - `work_slack_send` — отправка сообщений в Slack (DM по email или channel ID); используется cron-задачами
 - `work_tally_forms`, `work_tally_submissions` — Tally.so формы и ответы (REST API, Bearer token)
@@ -191,10 +191,22 @@ services/
     Dockerfile             — Node.js 22 + OpenClaw
     entrypoint.sh          — auth, workspace sync, cron seed, session cleanup
     cron-seed.json         — seed для cron/jobs.json (2 задачи: briefing + weekly report)
-    work-agent/            — кастомный плагин (15 тулов)
-      index.ts             — plugin registration, tool definitions
+    work-agent/            — кастомный плагин (31 тул, модульная архитектура)
+      index.ts             — plugin entry point, config init, PluginContext, module dispatch
+      types.ts             — PluginContext interface (shared DI container)
+      clients.ts           — HTTP clients: Tavily, Tally, Telegram search, Slack API
+      health.ts            — health monitoring, probing, periodic checks, Slack alerts
+      gmail.ts             — work_read_email, work_send_email
+      calendar.ts          — work_list_calendars, work_list_events, work_schedule_meeting
+      drive.ts             — work_drive_search, work_drive_read
+      sheets.ts            — work_sheets_create/read/write/append
+      docs.ts              — work_docs_create/read/append
+      analytics.ts         — GA4, Tally.so, Amplitude tools
+      slack.ts             — work_slack_interactive/update/send
+      ops.ts               — cross-domain: search, reports, health, backup, usage, web search
       mcp-client.ts        — MCP JSON-RPC 2.0 session management
-      utils.ts             — fetchWithTimeout, extractParams, param, ok/err, confirmationId
+      adapter.ts           — OpenClaw SDK abstraction layer
+      utils.ts             — fetchWithTimeout, confirmationId
       backup.ts            — automated backup orchestration (pg + memory + WA → Drive)
     workspace/
       IDENTITY.md          — персона агента (always-overwrite)
