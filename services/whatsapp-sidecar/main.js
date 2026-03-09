@@ -9,7 +9,7 @@ import pino from "pino";
 import pg from "pg";
 import { createServer } from "node:http";
 import { execSync } from "node:child_process";
-import { readdirSync, rmSync, existsSync } from "node:fs";
+import { readdirSync, rmSync, existsSync, writeFileSync, readFileSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -29,7 +29,9 @@ const SYNC_HISTORY = process.env.WA_SYNC_HISTORY === "1"; // ingest history sync
 
 const logger = pino({ level: process.env.LOG_LEVEL || "warn" });
 
-const FORCE_REAUTH = process.env.WA_FORCE_REAUTH === "1";
+// WA_FORCE_REAUTH: set any non-empty value to trigger re-pairing (e.g. "1", a timestamp, etc.)
+// Uses a marker file so re-pairing only happens once per unique value — safe across restarts.
+const FORCE_REAUTH = process.env.WA_FORCE_REAUTH || "";
 const SIDECAR_AUTH_TOKEN = process.env.SIDECAR_AUTH_TOKEN || "";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -258,6 +260,10 @@ async function startWhatsApp() {
       ensureAccountRow(me).catch((e) =>
         console.error("[WA] Failed to register account:", e.message),
       );
+      // Mark force-reauth as completed so it won't repeat on next restart
+      if (FORCE_REAUTH) {
+        try { writeFileSync(`${AUTH_DIR}/.reauth-done`, FORCE_REAUTH); } catch { /* harmless */ }
+      }
     }
 
     if (connection === "close") {
@@ -467,13 +473,21 @@ setTimeout(()=>location.reload(),10000);
 async function main() {
   await ensureSchema();
 
-  // Clear auth state if force reauth is requested
+  // Clear auth state if force reauth is requested (single-use per unique value)
+  const reauthMarker = `${AUTH_DIR}/.reauth-done`;
   if (FORCE_REAUTH && existsSync(AUTH_DIR)) {
-    console.error("[WA] WA_FORCE_REAUTH=1 — clearing auth state for re-pairing...");
-    for (const f of readdirSync(AUTH_DIR)) {
-      rmSync(`${AUTH_DIR}/${f}`, { recursive: true, force: true });
+    // Check if this reauth value was already processed
+    let markerValue = "";
+    try { markerValue = existsSync(reauthMarker) ? readFileSync(reauthMarker, "utf-8").trim() : ""; } catch {}
+    if (markerValue !== FORCE_REAUTH) {
+      console.error(`[WA] WA_FORCE_REAUTH="${FORCE_REAUTH}" — clearing auth state for re-pairing...`);
+      for (const f of readdirSync(AUTH_DIR)) {
+        rmSync(`${AUTH_DIR}/${f}`, { recursive: true, force: true });
+      }
+      console.error("[WA] Auth state cleared. Will generate new QR code.");
+    } else {
+      console.error(`[WA] WA_FORCE_REAUTH="${FORCE_REAUTH}" already completed — skipping.`);
     }
-    console.error("[WA] Auth state cleared. Will generate new QR code.");
   }
 
   console.error(`[WA] Account label: ${ACCOUNT_LABEL}`);
