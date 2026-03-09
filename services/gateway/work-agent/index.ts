@@ -384,26 +384,29 @@ const WorkAgentPlugin = {
     // Amplitude: prefer OAuth (official MCP server) over legacy sidecar auth
     const ampOAuthStateFile = "/data/openclaw-state/amplitude-oauth.json";
     if (config.amplitudeOAuthRefreshToken && config.amplitudeOAuthClientId) {
-      // Load persisted access_token (survives restarts without re-reading env var)
+      // Load persisted tokens (survives restarts without re-reading env vars)
       let accessToken = config.amplitudeOAuthAccessToken || "";
+      let refreshToken = config.amplitudeOAuthRefreshToken;
       try {
         const state = JSON.parse(readFileSync(ampOAuthStateFile, "utf-8"));
         if (state.accessToken) accessToken = state.accessToken;
+        if (state.refreshToken) refreshToken = state.refreshToken;
       } catch {
-        // no state file yet — use env var
+        // no state file yet — use env vars
       }
 
       const ampUrl = (config.amplitudeMcpUrl || "https://mcp.amplitude.com") + "/mcp";
       const oauthProvider = new OAuthBearerProvider({
         accessToken,
-        refreshToken: config.amplitudeOAuthRefreshToken,
+        refreshToken,
         clientId: config.amplitudeOAuthClientId,
         tokenEndpoint: "https://mcp.amplitude.com/token",
-        onTokenRefreshed: (newToken: string) => {
+        onTokenRefreshed: (newAccessToken: string, newRefreshToken: string) => {
           try {
             mkdirSync(dirname(ampOAuthStateFile), { recursive: true });
             writeFileSync(ampOAuthStateFile, JSON.stringify({
-              accessToken: newToken,
+              accessToken: newAccessToken,
+              refreshToken: newRefreshToken,
               updatedAt: new Date().toISOString(),
             }));
           } catch (e) {

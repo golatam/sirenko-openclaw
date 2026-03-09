@@ -49,8 +49,8 @@ export interface OAuthBearerOpts {
   refreshToken: string;
   clientId: string;
   tokenEndpoint: string;
-  /** Called after a successful token refresh — persist the new access token. */
-  onTokenRefreshed?: (newAccessToken: string) => void;
+  /** Called after a successful token refresh — persist new tokens. */
+  onTokenRefreshed?: (newAccessToken: string, newRefreshToken: string) => void;
 }
 
 export class OAuthBearerProvider implements McpAuthProvider {
@@ -58,7 +58,7 @@ export class OAuthBearerProvider implements McpAuthProvider {
   private refreshToken: string;
   private clientId: string;
   private tokenEndpoint: string;
-  private onTokenRefreshed?: (newAccessToken: string) => void;
+  private onTokenRefreshed?: (newAccessToken: string, newRefreshToken: string) => void;
   private refreshPromise?: Promise<boolean>;
 
   constructor(opts: OAuthBearerOpts) {
@@ -111,7 +111,7 @@ export class OAuthBearerProvider implements McpAuthProvider {
         this.refreshToken = data.refresh_token as string;
       }
       console.error("[mcp-client] OAuth refresh: success, new access_token obtained");
-      this.onTokenRefreshed?.(this.accessToken);
+      this.onTokenRefreshed?.(this.accessToken, this.refreshToken);
       return true;
     } catch (e) {
       console.error(`[mcp-client] OAuth refresh error: ${(e as Error).message}`);
@@ -167,20 +167,33 @@ export class McpClient {
   }
 
   private async init(): Promise<void> {
-    const res = await fetchWithTimeout(this.mcpEndpoint(), {
-      method: "POST",
-      headers: this.requestHeaders(),
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-        params: {
-          protocolVersion: "2025-03-26",
-          capabilities: {},
-          clientInfo: { name: `work-agent-${this.name}`, version: "1.0.0" },
-        },
-      }),
-    });
+    const doInit = async (): Promise<Response> =>
+      fetchWithTimeout(this.mcpEndpoint(), {
+        method: "POST",
+        headers: this.requestHeaders(),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-03-26",
+            capabilities: {},
+            clientInfo: { name: `work-agent-${this.name}`, version: "1.0.0" },
+          },
+        }),
+      });
+
+    let res = await doInit();
+
+    // Handle 401 during init — refresh token and retry
+    if (res.status === 401 && this.auth?.onUnauthorized) {
+      console.error(`[mcp-client] MCP[${this.name}] init got 401, attempting token refresh...`);
+      const refreshed = await this.auth.onUnauthorized();
+      if (refreshed) {
+        res = await doInit();
+      }
+    }
+
     if (!res.ok) {
       throw new Error(`MCP[${this.name}] init HTTP ${res.status}: ${await res.text()}`);
     }
