@@ -299,7 +299,9 @@ async function startWhatsApp() {
 
         const isGroup = remoteJid?.endsWith("@g.us") || false;
         const senderId = msg.key.participant || remoteJid;
-        const senderName = msg.pushName || null;
+        // pushName is self-set by the contact; fall back to readable phone number
+        const rawPhone = (senderId || "").replace(/@.*$/, "");
+        const senderName = msg.pushName || (rawPhone ? `+${rawPhone}` : null);
         let text = extractText(msg);
         const timestamp = msg.messageTimestamp;
         const ts = new Date(Number(timestamp) * 1000);
