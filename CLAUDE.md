@@ -24,7 +24,7 @@ OpenClaw Work Agent — продуктивный агент на базе OpenCl
 
 6. **PostgreSQL** — общий на Railway. Схема в `services/telegram-sidecar/schema.sql`. Две таблицы: `accounts` (подключённые аккаунты) и `messages` (нормализованное хранилище сообщений с GIN-индексом для полнотекстового поиска).
 
-Плагин (`services/gateway/work-agent/index.ts`) регистрирует 26 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. MCP-клиент (`mcp-client.ts`) — класс `McpClient` с per-instance session state и поддержкой auth providers (InternalAuthProvider для сайдкаров, OAuthBearerProvider для Amplitude). Инстансы: `googleMcp` (Google) и `amplitudeMcp` (Amplitude — official MCP server). Telegram-данные из PostgreSQL через HTTP.
+Плагин (`services/gateway/work-agent/index.ts`) регистрирует 28 тулов через OpenClaw plugin SDK. OpenClaw вызывает `execute(toolUseId, params, context, callback)` — хелпер `extractParams()` извлекает params из аргументов. MCP-клиент (`mcp-client.ts`) — класс `McpClient` с per-instance session state и поддержкой auth providers (InternalAuthProvider для сайдкаров, OAuthBearerProvider для Amplitude). Инстансы: `googleMcp` (Google) и `amplitudeMcp` (Amplitude — official MCP server). Telegram-данные из PostgreSQL через HTTP. Tally.so данные — прямой REST API из плагина (без MCP).
 
 ## Persistent Storage
 
@@ -85,3 +85,5 @@ cd services/telegram-sidecar && python gen_session.py
 - Конфиг Gateway использует `${VAR}` для интерполяции переменных окружения
 - Таблица `messages` сайдкара — общий слой данных; тулы плагина будут обращаться к ней через `dbUrl`
 - Все write-тулы (email, календарь) требуют подтверждения пользователя перед выполнением
+- Tally.so — прямой REST API из плагина (Bearer token, `TALLY_API_KEY`), тулы `work_tally_forms` и `work_tally_submissions`
+- Google Ads данные — через GA4 linked reports (существующий `work_analytics_report`), не требует отдельного API

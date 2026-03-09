@@ -55,9 +55,10 @@ Gateway domain:
 - 3 аккаунта: kirill@sirenko.ru, kirill.s@flexify.finance, ksirenko@dolphin-software.online
 
 ### Plugin (work-agent)
-- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 26 тулов (Gmail, Calendar, Drive, Sheets, Docs, GA4, Telegram, WhatsApp search, usage, channel info, Slack send, health check, backup, Amplitude)
+- `services/gateway/work-agent/index.ts`: MCP-клиент на fetch(), 28 тулов (Gmail, Calendar, Drive, Sheets, Docs, GA4, Telegram, WhatsApp search, usage, channel info, Slack send, health check, backup, Amplitude, Tally)
 - `work_get_channel_info` — возвращает context текущего разговора (канал, source, user); логирует полный context в stderr
 - `work_slack_send` — отправка сообщений в Slack (DM по email или channel ID); используется cron-задачами
+- `work_tally_forms`, `work_tally_submissions` — Tally.so формы и ответы (REST API, Bearer token)
 - 30s AbortController таймаут на все fetch-вызовы
 - `extractParams()` helper: извлекает params из `execute(toolUseId, params, context, callback)` (OpenClaw передаёт 4 аргумента, не 1)
 - `param()` helper: резолвит snake_case/camelCase параметры (defense in depth)
@@ -147,6 +148,19 @@ Gateway domain:
 - **9b Security**: `SIDECAR_AUTH_TOKEN` — единый auth token для всех сайдкаров (`X-Internal-Token` header); host allowlist в google-mcp-sidecar; `_resolve_account()` возвращает 400 при неизвестном аккаунте
 - **9c Reliability**: message dedup (`UNIQUE` partial index + `ON CONFLICT DO NOTHING`); supervisor loop с exponential backoff в telegram-sidecar; graceful shutdown (SIGTERM handlers) во всех сайдкарах; `STOPSIGNAL SIGTERM` во всех Dockerfiles
 - **Voice retry**: транскрипция голосовых с retry (3 попытки, backoff 3s→6s→12s) при Groq 429 rate limit (оба сайдкара)
+
+### Tally.so (Phase 11)
+- `work_tally_forms` — список форм с количеством ответов и статусом
+- `work_tally_submissions` — ответы на форму с фильтрами (дата, статус, пагинация)
+- REST API (`https://api.tally.so`), Bearer token, прямой fetch из плагина (без MCP/сайдкара)
+- Env var: `TALLY_API_KEY` в Railway (сервис gateway)
+- Лимит: 100 запросов/мин
+
+### Google Ads через GA4 Linked Reports (Phase 11)
+- Google Ads данные доступны через существующий `work_analytics_report` (если GA4 привязан к Ads)
+- Dimensions: `sessionGoogleAdsCampaignName`, `sessionGoogleAdsAdGroupName`, `sessionGoogleAdsKeyword`
+- Metrics: `advertiserAdCost`, `advertiserAdClicks`, `advertiserAdImpressions`, `advertiserAdCostPerClick`
+- Не требует отдельного OAuth scope, Developer Token или нового кода
 
 ### Amplitude — Official MCP Server (Phase 8a v2)
 - Заменён кастомный amplitude-mcp-sidecar на подключение к официальному `mcp.amplitude.com/mcp`
