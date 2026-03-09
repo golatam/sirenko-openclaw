@@ -13,6 +13,7 @@ let _databaseUrl: string | undefined;
 let _whatsappSidecarUrl: string | undefined;
 let _googleMcp: McpClient | undefined;
 let _amplitudeMcp: McpClient | undefined;
+let _tallyApiKey: string | undefined;
 
 // ---------------------------------------------------------------------------
 // Tavily web search — lightweight REST API client
@@ -38,6 +39,33 @@ async function tavilySearch(
 
   if (!res.ok) {
     throw new Error(`Tavily HTTP ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Tally.so REST API client — forms and submissions
+// ---------------------------------------------------------------------------
+
+const TALLY_BASE = "https://api.tally.so";
+
+async function tallyGet(
+  path: string,
+  params: Record<string, string | number> = {},
+): Promise<unknown> {
+  if (!_tallyApiKey) throw new Error("TALLY_API_KEY is not configured");
+
+  const url = new URL(path, TALLY_BASE);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+  }
+
+  const res = await fetchWithTimeout(url.toString(), {
+    headers: { Authorization: `Bearer ${_tallyApiKey}` },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Tally HTTP ${res.status}: ${await res.text()}`);
   }
   return res.json();
 }
@@ -396,7 +424,8 @@ const WorkAgentPlugin = {
     _sidecarAuthToken = config.sidecarAuthToken;
     _databaseUrl = config.databaseUrl;
     _whatsappSidecarUrl = config.whatsappSidecarUrl;
-    console.error(`[work-agent] googleMcp=${config.mcpServerUrl} amplitudeMcp=${_amplitudeMcp ? "configured" : "not set"} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"} dbUrl=${_databaseUrl ? "configured" : "not set"} waUrl=${_whatsappSidecarUrl ? "configured" : "not set"}`);
+    _tallyApiKey = config.tallyApiKey;
+    console.error(`[work-agent] googleMcp=${config.mcpServerUrl} amplitudeMcp=${_amplitudeMcp ? "configured" : "not set"} tgSidecarUrl=${_tgSidecarUrl} tavily=${_tavilyApiKey ? "configured" : "not set"} tally=${_tallyApiKey ? "configured" : "not set"} sidecarAuth=${_sidecarAuthToken ? "configured" : "not set"} dbUrl=${_databaseUrl ? "configured" : "not set"} waUrl=${_whatsappSidecarUrl ? "configured" : "not set"}`);
 
     // Alias for readability in tool handlers
     const googleMcp = _googleMcp;
@@ -1436,6 +1465,106 @@ const WorkAgentPlugin = {
           const account = param(params, "account") as string | undefined;
           if (account) args.account = account;
           const result = await googleMcp.call("analytics_run_report", args);
+          return ok(result);
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    // -----------------------------------------------------------------------
+    // Tally.so — forms and submissions
+    // -----------------------------------------------------------------------
+
+    api.registerTool({
+      name: "work_tally_forms",
+      label: "Tally Forms",
+      description:
+        "List all Tally forms with submission counts and status. " +
+        "Use this to discover form IDs for work_tally_submissions.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          limit: {
+            type: "number",
+            description: "Max forms to return (default 50, max 500)",
+          },
+          page: {
+            type: "number",
+            description: "Page number (default 1)",
+          },
+        },
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        try {
+          const limit = Math.min((param(params, "limit") as number) || 50, 500);
+          const page = (param(params, "page") as number) || 1;
+          const result = await tallyGet("/forms", { limit, page });
+          return ok(result);
+        } catch (e) {
+          return err((e as Error).message);
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "work_tally_submissions",
+      label: "Tally Submissions",
+      description:
+        "Get submissions (responses) for a Tally form. Returns questions with field definitions and all answers. " +
+        "Use work_tally_forms first to get form IDs.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          form_id: {
+            type: "string",
+            description: "Tally form ID (from work_tally_forms)",
+          },
+          filter: {
+            type: "string",
+            description: "Filter: 'all', 'completed', or 'partial' (default: 'completed')",
+          },
+          start_date: {
+            type: "string",
+            description: "Start date filter (ISO 8601, e.g. '2026-03-01T00:00:00Z')",
+          },
+          end_date: {
+            type: "string",
+            description: "End date filter (ISO 8601)",
+          },
+          limit: {
+            type: "number",
+            description: "Max submissions to return (default 50, max 500)",
+          },
+          page: {
+            type: "number",
+            description: "Page number (default 1)",
+          },
+        },
+        required: ["form_id"],
+      },
+      async execute(...rawArgs: unknown[]) {
+        const params = extractParams(rawArgs);
+        try {
+          const formId = param(params, "form_id") as string;
+          if (!formId) return err("form_id is required");
+
+          const queryParams: Record<string, string | number> = {};
+          const filter = param(params, "filter") as string | undefined;
+          if (filter) queryParams.filter = filter;
+          const startDate = param(params, "start_date") as string | undefined;
+          if (startDate) queryParams.startDate = startDate;
+          const endDate = param(params, "end_date") as string | undefined;
+          if (endDate) queryParams.endDate = endDate;
+          const limit = param(params, "limit") as number | undefined;
+          if (limit) queryParams.limit = Math.min(limit, 500);
+          const page = param(params, "page") as number | undefined;
+          if (page) queryParams.page = page;
+
+          const result = await tallyGet(`/forms/${formId}/submissions`, queryParams);
           return ok(result);
         } catch (e) {
           return err((e as Error).message);

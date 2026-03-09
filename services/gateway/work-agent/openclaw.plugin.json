@@ -45,6 +45,10 @@
       "whatsappSidecarUrl": {
         "type": "string",
         "description": "URL of whatsapp-sidecar HTTP API (e.g. http://whatsapp-sidecar.railway.internal:8080)"
+      },
+      "tallyApiKey": {
+        "type": "string",
+        "description": "Tally.so API key for form submissions (falls back to TALLY_API_KEY env var)"
       }
     }
   },

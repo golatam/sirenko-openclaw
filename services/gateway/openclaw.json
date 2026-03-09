@@ -81,7 +81,8 @@
           "amplitudeOAuthRefreshToken": "${AMPLITUDE_OAUTH_REFRESH_TOKEN}",
           "sidecarAuthToken": "${SIDECAR_AUTH_TOKEN}",
           "databaseUrl": "${DATABASE_URL}",
-          "whatsappSidecarUrl": "${WHATSAPP_SIDECAR_URL}"
+          "whatsappSidecarUrl": "${WHATSAPP_SIDECAR_URL}",
+          "tallyApiKey": "${TALLY_API_KEY}"
         }
       },
       "memory-core": {

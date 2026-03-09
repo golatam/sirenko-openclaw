@@ -29,6 +29,7 @@ export interface WorkAgentConfig {
   amplitudeOAuthRefreshToken?: string;
   databaseUrl?: string;
   whatsappSidecarUrl?: string;
+  tallyApiKey?: string;
 }
 
 export interface ToolContext {
@@ -65,6 +66,7 @@ export function getPluginConfig(api: OpenClawPluginApi): WorkAgentConfig {
     amplitudeOAuthRefreshToken: raw.amplitudeOAuthRefreshToken || process.env.AMPLITUDE_OAUTH_REFRESH_TOKEN,
     databaseUrl: raw.databaseUrl || process.env.DATABASE_URL,
     whatsappSidecarUrl: raw.whatsappSidecarUrl || process.env.WHATSAPP_SIDECAR_URL,
+    tallyApiKey: raw.tallyApiKey || process.env.TALLY_API_KEY,
   };
 }
 
