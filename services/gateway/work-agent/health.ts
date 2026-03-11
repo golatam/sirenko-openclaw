@@ -102,13 +102,14 @@ export async function probeAllSidecars(ctx: PluginContext): Promise<HealthResult
 // Formatting
 // ---------------------------------------------------------------------------
 
-export function formatHealthMessage(result: HealthResult, kind: AlertKind): string {
+export function formatHealthMessage(result: HealthResult, kind: AlertKind, persistent = false): string {
   const headers: Record<AlertKind, string> = {
     "post-deploy": ":rocket: *Post-Deploy Health Check*",
     "alert": result.status === "error" ? ":red_circle: *System Health Alert*" : ":warning: *System Health Alert*",
     "recovery": ":white_check_mark: *System Recovered*",
   };
-  const lines = [headers[kind], `Status: *${result.status}*`, ""];
+  const header = persistent ? `${headers[kind]} (persistent)` : headers[kind];
+  const lines = [header, `Status: *${result.status}*`, ""];
 
   for (const [name, raw] of Object.entries(result.components)) {
     const comp = raw as Record<string, unknown>;
@@ -150,20 +151,32 @@ export function formatHealthMessage(result: HealthResult, kind: AlertKind): stri
 // ---------------------------------------------------------------------------
 
 const HEALTH_STATE_FILE = "/data/openclaw-state/health-status.json";
+const REPEAT_ALERT_INTERVAL_MS = 6 * 60 * 60 * 1000; // re-alert every 6h while in error
 
-function loadLastHealthStatus(): string | null {
+interface HealthState {
+  status: string;
+  updatedAt: string;
+  lastAlertAt?: string;
+}
+
+function loadHealthState(): HealthState | null {
   try {
-    const data = JSON.parse(readFileSync(HEALTH_STATE_FILE, "utf-8"));
-    return data.status || null;
+    return JSON.parse(readFileSync(HEALTH_STATE_FILE, "utf-8")) as HealthState;
   } catch {
     return null;
   }
 }
 
-function saveHealthStatus(status: string): void {
+function saveHealthState(status: string, lastAlertAt?: string): void {
   try {
     mkdirSync(dirname(HEALTH_STATE_FILE), { recursive: true });
-    writeFileSync(HEALTH_STATE_FILE, JSON.stringify({ status, updatedAt: new Date().toISOString() }));
+    const prev = loadHealthState();
+    const state: HealthState = {
+      status,
+      updatedAt: new Date().toISOString(),
+      lastAlertAt: lastAlertAt ?? prev?.lastAlertAt,
+    };
+    writeFileSync(HEALTH_STATE_FILE, JSON.stringify(state));
   } catch (e) {
     console.error(`[work-agent] failed to save health status: ${(e as Error).message}`);
   }
@@ -173,9 +186,9 @@ function saveHealthStatus(status: string): void {
 // Notifications
 // ---------------------------------------------------------------------------
 
-async function sendHealthNotification(ctx: PluginContext, result: HealthResult, kind: AlertKind): Promise<void> {
+async function sendHealthNotification(ctx: PluginContext, result: HealthResult, kind: AlertKind, persistent = false): Promise<void> {
   try {
-    const text = formatHealthMessage(result, kind);
+    const text = formatHealthMessage(result, kind, persistent);
     await slackApi("chat.postMessage", { channel: ctx.slackAlertChannel, text });
   } catch (e) {
     console.error(`[work-agent] health notification failed: ${(e as Error).message}`);
@@ -184,20 +197,41 @@ async function sendHealthNotification(ctx: PluginContext, result: HealthResult, 
 
 async function runPeriodicHealthCheck(ctx: PluginContext): Promise<void> {
   const result = await probeAllSidecars(ctx);
-  const prev = loadLastHealthStatus();
-  saveHealthStatus(result.status);
+  const state = loadHealthState();
+  const prev = state?.status ?? null;
+
+  let shouldAlert = false;
+  let isPersistent = false;
+  let alertKind: AlertKind = "alert";
 
   if (prev === null) {
-    if (result.status !== "ok") {
-      await sendHealthNotification(ctx, result, "alert");
-    }
+    // First check ever
+    shouldAlert = result.status !== "ok";
   } else if (prev !== "ok" && result.status === "ok") {
-    await sendHealthNotification(ctx, result, "recovery");
+    // Recovery
+    shouldAlert = true;
+    alertKind = "recovery";
   } else if (prev === "ok" && result.status !== "ok") {
-    await sendHealthNotification(ctx, result, "alert");
+    // New failure
+    shouldAlert = true;
+  } else if (prev !== "ok" && result.status !== "ok") {
+    // Persistent error — repeat alert every REPEAT_ALERT_INTERVAL_MS
+    const lastAlert = state?.lastAlertAt ? new Date(state.lastAlertAt).getTime() : 0;
+    const elapsed = Date.now() - lastAlert;
+    if (elapsed >= REPEAT_ALERT_INTERVAL_MS) {
+      shouldAlert = true;
+      isPersistent = true;
+    }
   }
 
-  console.error(`[work-agent] periodic health: ${result.status} (prev: ${prev || "none"})`);
+  if (shouldAlert) {
+    await sendHealthNotification(ctx, result, alertKind, isPersistent);
+    saveHealthState(result.status, new Date().toISOString());
+    console.error(`[work-agent] periodic health: ${result.status} (prev: ${prev || "none"}) — ${alertKind} sent`);
+  } else {
+    saveHealthState(result.status);
+    console.error(`[work-agent] periodic health: ${result.status} (prev: ${prev || "none"})`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -211,8 +245,8 @@ export function startHealthMonitoring(ctx: PluginContext): void {
   setTimeout(async () => {
     try {
       const result = await probeAllSidecars(ctx);
-      saveHealthStatus(result.status);
       await sendHealthNotification(ctx, result, "post-deploy");
+      saveHealthState(result.status, new Date().toISOString());
       console.error(`[work-agent] post-deploy health: ${result.status}`);
     } catch (e) {
       console.error(`[work-agent] post-deploy health check failed: ${(e as Error).message}`);
