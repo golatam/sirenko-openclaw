@@ -13,13 +13,20 @@ import asyncpg
 from aiohttp import web, ClientSession, ClientTimeout, FormData
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
+from telethon.errors import (
+    AuthKeyUnregisteredError,
+    FloodWaitError,
+    SessionRevokedError,
+    UserDeactivatedBanError,
+    UserDeactivatedError,
+)
 from telethon.sessions import StringSession
 from telethon.tl.types import User, Chat, Channel
 
 load_dotenv()
 
 _start_time = time.monotonic()
-_client_status: dict[str, str] = {}  # label -> "connected" | "disconnected" | "failed"
+_client_status: dict[str, str] = {}  # label -> "connected" | "disconnected" | "failed" | "auth_expired" | "banned"
 _shutdown_event = asyncio.Event()
 _active_clients: dict[str, TelegramClient] = {}  # label -> client (for disconnect on shutdown)
 
@@ -38,6 +45,15 @@ def _jlog(level: str, msg: str, **data):
     if data:
         entry["data"] = {k: v for k, v in data.items() if v is not None}
     print(json.dumps(entry, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
+
+
+class SessionExpiredError(Exception):
+    """Raised when Telegram session is invalid and re-auth is needed.
+
+    Supervisor must NOT retry — each retry triggers a new SMS code,
+    which spams the phone and risks a Telegram ban.
+    """
+    pass
 
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -263,9 +279,10 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
     client = TelegramClient(session, account.api_id, account.api_hash)
 
     def _code_callback():
-        _jlog("error", "Session expired — re-auth needed", account=account.label, phone=account.phone,
-              hint="Run gen_session.py locally, then update TGx_SESSION in Railway")
-        raise RuntimeError(f"{account.label} session expired — re-auth needed (see logs)")
+        _jlog("error", "Session expired — re-auth needed, STOPPING retries to prevent SMS spam",
+              account=account.label, phone=account.phone,
+              hint="Run gen_session.py locally, then update TGx_SESSION in Railway and redeploy")
+        raise SessionExpiredError(f"{account.label} session expired")
 
     try:
         _jlog("info", "Connecting", account=account.label)
@@ -277,8 +294,36 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
         _jlog("error", "Connection timeout", account=account.label, phone=account.phone, timeout_s=60)
         _client_status[account.label] = "failed"
         return
+    except (SessionExpiredError, AuthKeyUnregisteredError, SessionRevokedError):
+        # Fatal auth errors — do NOT retry, each attempt sends a new SMS code
+        _client_status[account.label] = "auth_expired"
+        raise  # Let supervisor see SessionExpiredError / auth error and stop
+    except (UserDeactivatedError, UserDeactivatedBanError) as e:
+        _jlog("error", "Account BANNED by Telegram", account=account.label, phone=account.phone, error=str(e))
+        _client_status[account.label] = "banned"
+        raise  # Supervisor will stop retrying
+    except FloodWaitError as e:
+        # FloodWait during connect likely means SendCodeRequest was triggered → session is dead
+        if e.seconds > 60:
+            _jlog("error", "FloodWait from SendCodeRequest — session is dead, STOPPING retries",
+                  account=account.label, seconds=e.seconds,
+                  hint="Wait for FloodWait to expire, then regenerate session")
+            _client_status[account.label] = "auth_expired"
+            raise SessionExpiredError(f"{account.label} FloodWait {e.seconds}s from SendCodeRequest")
+        _jlog("warn", "FloodWait during connect", account=account.label, seconds=e.seconds)
+        _client_status[account.label] = "failed"
+        await asyncio.sleep(e.seconds)
+        return
     except Exception as e:
-        _jlog("error", "Failed to start", account=account.label, phone=account.phone, error=str(e))
+        err_str = str(e)
+        # Catch FloodWait-like errors that come as generic exceptions (SendCodeRequest)
+        if "wait of" in err_str.lower() and "sendcoderequest" in err_str.lower():
+            _jlog("error", "SendCodeRequest FloodWait — session is dead, STOPPING retries",
+                  account=account.label, phone=account.phone, error=err_str,
+                  hint="Wait for FloodWait to expire, then regenerate session")
+            _client_status[account.label] = "auth_expired"
+            raise SessionExpiredError(f"{account.label} SendCodeRequest flood: {err_str}")
+        _jlog("error", "Failed to start", account=account.label, phone=account.phone, error=err_str)
         _client_status[account.label] = "failed"
         return
     _client_status[account.label] = "connected"
@@ -344,20 +389,55 @@ async def run_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_o
 
     try:
         await client.run_until_disconnected()
+    except (AuthKeyUnregisteredError, SessionRevokedError):
+        # Session invalidated while running (e.g. user changed password, terminated session)
+        _jlog("error", "Session invalidated at runtime — STOPPING retries",
+              account=account.label, phone=account.phone,
+              hint="Regenerate session: gen_session.py → update TGx_SESSION in Railway")
+        _client_status[account.label] = "auth_expired"
+        _active_clients.pop(account.label, None)
+        raise SessionExpiredError(f"{account.label} session invalidated at runtime")
+    except (UserDeactivatedError, UserDeactivatedBanError) as e:
+        _jlog("error", "Account BANNED at runtime", account=account.label, error=str(e))
+        _client_status[account.label] = "banned"
+        _active_clients.pop(account.label, None)
+        raise
+    except FloodWaitError as e:
+        _jlog("warn", "FloodWait at runtime", account=account.label, seconds=e.seconds)
+        _active_clients.pop(account.label, None)
+        await asyncio.sleep(min(e.seconds, 900))
+        return  # Supervisor will reconnect after wait
     finally:
-        _client_status[account.label] = "disconnected"
+        if _client_status.get(account.label) == "connected":
+            _client_status[account.label] = "disconnected"
         _active_clients.pop(account.label, None)
 
 
 async def supervise_account(pool: asyncpg.Pool, account: AccountConfig, sync_history_on_start: bool, per_chat: int) -> None:
-    """Supervisor loop: restart run_account() with exponential backoff on failure."""
+    """Supervisor loop: restart run_account() with exponential backoff on failure.
+
+    CRITICAL: SessionExpiredError / auth errors STOP the loop entirely.
+    Each retry on an expired session triggers a new SMS code → spam → Telegram ban.
+    """
     delay = 5
-    max_delay = 300
+    max_delay = 600  # 10 min cap for transient errors
 
     while not _shutdown_event.is_set():
         started_at = time.monotonic()
         try:
             await run_account(pool, account, sync_history_on_start, per_chat)
+        except (SessionExpiredError, AuthKeyUnregisteredError, SessionRevokedError):
+            # FATAL: session is dead. Do NOT retry — would trigger new SMS each time
+            _jlog("error", "AUTH EXPIRED — supervisor stopped, no more retries",
+                  account=account.label, phone=account.phone,
+                  action="Regenerate session with gen_session.py, update TGx_SESSION in Railway, redeploy")
+            _client_status[account.label] = "auth_expired"
+            return  # Exit supervisor loop permanently
+        except (UserDeactivatedError, UserDeactivatedBanError):
+            _jlog("error", "ACCOUNT BANNED — supervisor stopped permanently",
+                  account=account.label, phone=account.phone)
+            _client_status[account.label] = "banned"
+            return  # Exit supervisor loop permanently
         except Exception as e:
             _jlog("error", "Account crashed", account=account.label, error=str(e))
 
@@ -503,9 +583,24 @@ async def handle_health(request: web.Request) -> web.Response:
     # Telethon client status
     total = request.app.get("account_count", 0)
     connected = sum(1 for s in _client_status.values() if s == "connected")
+    expired = [label for label, s in _client_status.items() if s == "auth_expired"]
+    banned = [label for label, s in _client_status.items() if s == "banned"]
     if total == 0:
         checks["accounts"] = {"status": "error", "detail": "no accounts configured"}
         overall = "error"
+    elif banned:
+        accounts_list = [{"account": label, "status": s} for label, s in _client_status.items()]
+        checks["accounts"] = {"status": "error", "connected": connected, "total": total,
+                               "banned": banned, "accounts": accounts_list}
+        overall = "error"
+    elif expired:
+        accounts_list = [{"account": label, "status": s} for label, s in _client_status.items()]
+        checks["accounts"] = {"status": "degraded", "connected": connected, "total": total,
+                               "auth_expired": expired,
+                               "action": "Run gen_session.py, update TGx_SESSION in Railway, redeploy",
+                               "accounts": accounts_list}
+        if overall == "ok":
+            overall = "degraded"
     elif connected < total:
         disconnected = [label for label, s in _client_status.items() if s != "connected"]
         accounts_list = [{"account": label, "status": s} for label, s in _client_status.items()]
