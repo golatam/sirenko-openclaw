@@ -241,7 +241,29 @@ let messageCount = 0;
 let lastQr = null;
 let currentSock = null;
 let shuttingDown = false;
+let lastMessageAt = Date.now(); // Watchdog: track last message time
 const startTime = Date.now();
+
+// Watchdog: if no messages for WATCHDOG_IDLE_MS, force reconnect
+// WhatsApp groups are typically active — 30 min silence likely means broken session
+const WATCHDOG_IDLE_MS = parseInt(process.env.WA_WATCHDOG_IDLE_MIN || "30", 10) * 60_000;
+let watchdogTimer = null;
+
+function resetWatchdog() {
+  lastMessageAt = Date.now();
+  if (watchdogTimer) clearTimeout(watchdogTimer);
+  watchdogTimer = setTimeout(() => {
+    if (!isConnected || shuttingDown) return;
+    const idleMin = Math.floor((Date.now() - lastMessageAt) / 60_000);
+    jlog("warn", "Watchdog: no messages received, forcing reconnect", {
+      idle_minutes: idleMin,
+      threshold_minutes: WATCHDOG_IDLE_MS / 60_000,
+    });
+    // Close socket to trigger reconnect via connection.update handler
+    try { currentSock?.end(undefined); } catch {}
+  }, WATCHDOG_IDLE_MS);
+  watchdogTimer?.unref?.();
+}
 
 async function startWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -273,6 +295,7 @@ async function startWhatsApp() {
     if (connection === "open") {
       isConnected = true;
       reconnectAttempts = 0;
+      resetWatchdog();
       const me = sock.user?.id || "unknown";
       jlog("info", "Connected", { identity: me });
       ensureAccountRow(me).catch((e) =>
@@ -310,7 +333,12 @@ async function startWhatsApp() {
   // --- Message ingestion ---
   sock.ev.on("messages.upsert", async ({ type, messages }) => {
     // 'notify' = real-time new messages, 'append' = history sync
-    if (type !== "notify" && !SYNC_HISTORY) return;
+    if (type !== "notify" && !SYNC_HISTORY) {
+      if (messages.length > 0) {
+        jlog("debug", "Skipped history sync batch", { type, count: messages.length });
+      }
+      return;
+    }
 
     for (const msg of messages) {
       try {
@@ -338,7 +366,8 @@ async function startWhatsApp() {
         const metadata = {
           message_id: msg.key.id,
           is_group: isGroup,
-          group_name: groupName,
+          chat_title: groupName,   // Must be chat_title to match FTS GIN index
+          group_name: groupName,   // Keep for backward compat
         };
 
         if (isVoiceMessage(msg)) {
@@ -364,6 +393,16 @@ async function startWhatsApp() {
           metadata,
         });
         messageCount++;
+        resetWatchdog();
+        if (messageCount % 10 === 1 || isGroup) {
+          jlog("info", "Message ingested", {
+            count: messageCount,
+            type: isGroup ? "group" : "private",
+            chat: groupName || remoteJid?.replace(/@.*$/, ""),
+            sender: senderName,
+            has_text: !!text,
+          });
+        }
       } catch (e) {
         jlog("error", "Failed to ingest message", { error: e.message });
       }
@@ -396,7 +435,10 @@ const server = createServer(async (req, res) => {
 
     // WhatsApp connection status
     if (isConnected) {
-      checks.whatsapp = { status: "ok", account: ACCOUNT_LABEL };
+      const idleMin = Math.floor((Date.now() - lastMessageAt) / 60_000);
+      const whatsappStatus = idleMin > WATCHDOG_IDLE_MS / 60_000 ? "degraded" : "ok";
+      checks.whatsapp = { status: whatsappStatus, account: ACCOUNT_LABEL, idle_minutes: idleMin };
+      if (whatsappStatus === "degraded" && overall === "ok") overall = "degraded";
     } else if (lastQr) {
       checks.whatsapp = { status: "degraded", detail: "awaiting QR scan", account: ACCOUNT_LABEL };
       if (overall === "ok") overall = "degraded";
@@ -448,6 +490,40 @@ setTimeout(()=>location.reload(),10000);
     }
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end("<html><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>No QR Yet</h1><p>Waiting for QR code generation... Refresh in a few seconds.</p><script>setTimeout(()=>location.reload(),3000)</script></body></html>");
+    return;
+  }
+  // Stats endpoint — message counts per group/chat (diagnostic)
+  if (req.method === "GET" && req.url === "/stats") {
+    if (SIDECAR_AUTH_TOKEN) {
+      const token = req.headers["x-internal-token"] || "";
+      if (token !== SIDECAR_AUTH_TOKEN) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+    }
+    try {
+      const client = await pool.connect();
+      try {
+        const result = await client.query(`
+          SELECT thread_id, metadata_json->>'chat_title' AS chat_title,
+                 metadata_json->>'group_name' AS group_name,
+                 COUNT(*) AS msg_count,
+                 MIN(ts) AS first_msg, MAX(ts) AS last_msg
+          FROM messages WHERE source = 'whatsapp'
+          GROUP BY thread_id, metadata_json->>'chat_title', metadata_json->>'group_name'
+          ORDER BY msg_count DESC LIMIT 30
+        `);
+        const total = await client.query(`SELECT COUNT(*) AS total FROM messages WHERE source = 'whatsapp'`);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ total: parseInt(total.rows[0].total), chats: result.rows }));
+      } finally {
+        client.release();
+      }
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
     return;
   }
   // Backup endpoint — returns auth state as base64 tar.gz
